@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Star Control 1 Clone</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #05070d;
+        color: #d7dde8;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        display: flex;
+        height: 100%;
+      }
+      #map-container {
+        flex: 1;
+        position: relative;
+      }
+      canvas {
+        display: block;
+        background: #05070d;
+      }
+      #sidebar {
+        width: 300px;
+        border-left: 1px solid #232a3a;
+        background: #0a0d16;
+        padding: 12px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      #sidebar h2 {
+        margin: 0;
+        font-size: 16px;
+        color: #8fb8ff;
+      }
+      #turn-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      button {
+        background: #1c2942;
+        color: #d7dde8;
+        border: 1px solid #35507a;
+        border-radius: 4px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      button:hover {
+        background: #263a5e;
+      }
+      #info-panel {
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px dashed #232a3a;
+        padding: 2px 0;
+      }
+      #starbucks-bar {
+        font-size: 12px;
+        color: #f4d35e;
+      }
+      #info-panel .label {
+        color: #8892a6;
+      }
+      #fleet-list {
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .ship-row {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+      .ship-row + button {
+        margin: 0 0 6px 0;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+      .ship-row-selected .label {
+        color: #f4d35e;
+      }
+      #hint {
+        font-size: 12px;
+        color: #8892a6;
+      }
+      .faction-actions {
+        margin-top: 10px;
+        border-top: 1px solid #232a3a;
+        padding-top: 8px;
+      }
+      .faction-actions h4 {
+        margin: 0 0 6px 0;
+        font-size: 12px;
+        color: #8fb8ff;
+      }
+      .action-group {
+        margin-bottom: 6px;
+      }
+      .action-group > .label {
+        display: block;
+        font-size: 11px;
+        color: #8892a6;
+        margin-bottom: 4px;
+      }
+      .action-group button {
+        margin: 2px 4px 2px 0;
+        font-size: 11px;
+        padding: 4px 8px;
+      }
+      .action-group button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      #faction-picker {
+        position: fixed;
+        inset: 0;
+        background: rgba(5, 7, 13, 0.92);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      #faction-picker.hidden {
+        display: none;
+      }
+      .picker-card {
+        max-width: 460px;
+        text-align: center;
+        padding: 24px;
+      }
+      .picker-card h1 {
+        font-size: 20px;
+        color: #8fb8ff;
+        margin: 0 0 12px 0;
+      }
+      .picker-card p {
+        font-size: 13px;
+        color: #a9b2c4;
+        line-height: 1.5;
+      }
+      .picker-buttons {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 18px;
+      }
+      .picker-btn {
+        padding: 12px 18px;
+        font-size: 14px;
+      }
+      #pick-hierarchy {
+        border-color: #ff5c5c;
+      }
+      #pick-alliance {
+        border-color: #4da3ff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="map-container">
+        <canvas id="galaxy-canvas"></canvas>
+      </div>
+      <div id="sidebar">
+        <div id="turn-bar">
+          <h2 id="turn-label">Turn 1</h2>
+          <div>
+            <button id="new-game-btn">New Game</button>
+            <button id="end-turn-btn">End Turn</button>
+          </div>
+        </div>
+        <div id="starbucks-bar" class="row"></div>
+        <div id="hint">Click a planet to inspect it. Click a ship's icon (or its Select button) to give it orders, then click a highlighted destination to move it.</div>
+        <div id="info-panel">
+          <div id="info-empty">No planet selected.</div>
+        </div>
+      </div>
+    </div>
+    <div id="faction-picker">
+      <div class="picker-card">
+        <h1>Choose your side</h1>
+        <p>
+          The Hierarchy of Battle Thralls holds the top of the galaxy; the Alliance of Free Stars holds the bottom.
+          Whichever side you don't pick is played by the computer.
+        </p>
+        <div class="picker-buttons">
+          <button id="pick-hierarchy" class="picker-btn">Play Hierarchy of Battle Thralls</button>
+          <button id="pick-alliance" class="picker-btn">Play Alliance of Free Stars</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
