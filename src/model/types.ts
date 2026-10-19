@@ -42,13 +42,10 @@ export interface Ship {
   movesRemaining: number;
 }
 
-/** How many planets make up the neck/chokepoint area between the two sides. */
-export type NeckSizeConfig = { type: 'fixed'; size: number } | { type: 'random'; min: number; max: number };
-
 export interface ScenarioConfig {
-  /** Total planets in the galaxy. The neck comes out of this total; the rest splits evenly between the two sides. */
+  /** Total planets in the galaxy (2-50, SC1's limits), split evenly; an odd one goes to the Hierarchy. */
   totalPlanets: number;
-  neckSize: NeckSizeConfig;
+  /** Share of each type per side. Each side gets these exact proportions, shuffled, as in SC1's scenario decks. */
   planetTypeWeights: Record<PlanetType, number>;
   startingShips: Record<Faction, string[]>;
   movesPerTurn: number;
