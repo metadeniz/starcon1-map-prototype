@@ -16,6 +16,33 @@ const TYPE_COLORS: Record<PlanetType, string> = {
 
 const UNEXPLORED_COLOR = '#2f6fb8';
 
+// SC1's planet markers (setup.pkg package 16, type 3, instance 4): 5x5 one-colour glyphs that the
+// strategic map draws over a star. A fortified colony or mine gets the square with the diamond or
+// plus drawn inside it, the same way SC1 layers them.
+const MARKER_GLYPHS = {
+  colony: ['..#..', '.#.#.', '#...#', '.#.#.', '..#..'],
+  mine: ['..#..', '..#..', '#####', '..#..', '..#..'],
+  fortified: ['#####', '#...#', '#...#', '#...#', '#####'],
+};
+const MARKER_SCALE = 3;
+// Pale versions of the owner colours, so the glyphs stand out on every planet fill.
+const MARKER_COLORS: Record<Owner, string> = {
+  alliance: '#d2e8ff',
+  hierarchy: '#ffd6d6',
+  neutral: '#eef0f5',
+};
+
+function drawMarkerGlyph(ctx: CanvasRenderingContext2D, glyph: string[], cx: number, cy: number, color: string): void {
+  const left = Math.round(cx - (glyph[0].length * MARKER_SCALE) / 2);
+  const top = Math.round(cy - (glyph.length * MARKER_SCALE) / 2);
+  ctx.fillStyle = color;
+  glyph.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      if (row[x] === '#') ctx.fillRect(left + x * MARKER_SCALE, top + y * MARKER_SCALE, MARKER_SCALE, MARKER_SCALE);
+    }
+  });
+}
+
 const OWNER_COLORS: Record<Owner, string> = {
   alliance: '#4da3ff',
   hierarchy: '#ff5c5c',
@@ -165,6 +192,13 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
     ctx.lineWidth = p.id === options.selectedPlanetId ? 4 : 2.5;
     ctx.strokeStyle = OWNER_COLORS[p.owner];
     ctx.stroke();
+
+    // Improvements stay hidden until the planet is explored, as in the side panel.
+    if (!p.explored) continue;
+    const markerColor = MARKER_COLORS[p.owner];
+    if (p.fortified || p.improvement === 'fortification') drawMarkerGlyph(ctx, MARKER_GLYPHS.fortified, s.x, s.y, markerColor);
+    if (p.improvement === 'colony') drawMarkerGlyph(ctx, MARKER_GLYPHS.colony, s.x, s.y, markerColor);
+    if (p.improvement === 'mine') drawMarkerGlyph(ctx, MARKER_GLYPHS.mine, s.x, s.y, markerColor);
   }
 
   // Starbases and ships: SC1's own map icons, arranged around their planet
