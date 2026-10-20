@@ -3,9 +3,13 @@ import { DEFAULT_SCENARIO } from './generation/scenarioConfig';
 import { computeViewTransform, render, type ViewTransform } from './render/canvasRenderer';
 import { renderInfoPanel } from './render/infoPanel';
 import { handleCanvasClick, refreshAfterEndTurn, selectShip, startMovingStarbase, type Selection } from './ui/inputHandler';
-import { buildShip, endTurn, InvalidActionError, startConstruction } from './game/gameState';
+import { buildShip, endTurn, InvalidActionError, startConstruction, winner } from './game/gameState';
+import { SC1_PRESETS } from './generation/sc1Presets';
+import { parseSc1Scenario, sc1ToScenarioConfig, ScenarioFileError } from './generation/sc1Scenario';
+import { worldTotal } from './generation/galaxyGenerator';
+import { shipTypeName } from './model/shipRoster';
 import { runAiTurn } from './game/ai';
-import type { Faction, GameState, ImprovementType } from './model/types';
+import type { Faction, GameState, ImprovementType, ScenarioConfig, SideSetup } from './model/types';
 import type { ShipRole } from './model/shipRoster';
 
 const FACTION_LABEL: Record<Faction, string> = {
@@ -24,6 +28,91 @@ const newGameBtn = document.getElementById('new-game-btn') as HTMLButtonElement;
 const factionPicker = document.getElementById('faction-picker')!;
 const pickAllianceBtn = document.getElementById('pick-alliance') as HTMLButtonElement;
 const pickHierarchyBtn = document.getElementById('pick-hierarchy') as HTMLButtonElement;
+const scenarioSelect = document.getElementById('scenario-select') as HTMLSelectElement;
+const loadScenarioBtn = document.getElementById('load-scenario-btn') as HTMLButtonElement;
+const scenarioFileInput = document.getElementById('scenario-file') as HTMLInputElement;
+const scenarioInfo = document.getElementById('scenario-info')!;
+const scenarioError = document.getElementById('scenario-error')!;
+const scenarioBar = document.getElementById('scenario-bar')!;
+
+const scenarios: ScenarioConfig[] = [DEFAULT_SCENARIO, ...SC1_PRESETS.map(sc1ToScenarioConfig)];
+
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+function selectedScenario(): ScenarioConfig {
+  return scenarios[Number(scenarioSelect.value)] ?? DEFAULT_SCENARIO;
+}
+
+function refreshScenarioOptions(selectIndex: number): void {
+  scenarioSelect.innerHTML = scenarios
+    .map((sc, i) => `<option value="${i}">${escapeHtml(sc.title)}</option>`)
+    .join('');
+  scenarioSelect.value = String(selectIndex);
+  renderScenarioInfo();
+}
+
+function victoryText(side: SideSetup): string {
+  const parts = [
+    side.victory.enemyHasNoShips && 'no ships',
+    side.victory.enemyHasNoColonies && 'no colonies',
+    side.victory.enemyHasNoMines && 'no mines',
+  ].filter(Boolean);
+  return parts.length ? `Wins when the enemy has ${parts.join(' and ')}` : 'No victory condition set';
+}
+
+function sideSummary(faction: Faction, side: SideSetup): string {
+  const w = side.worlds;
+  const worlds = [
+    [w.dead, 'dead'],
+    [w.mineral, 'mineral'],
+    [w.life, 'life'],
+    [w.colony, 'colony'],
+    [w.fortifiedColony, 'fortified colony'],
+    [w.mine, 'mine'],
+    [w.fortifiedMine, 'fortified mine'],
+  ]
+    .filter(([n]) => n)
+    .map(([n, label]) => `${n} ${label}`)
+    .join(', ');
+  const counts = new Map<string, number>();
+  for (const ship of side.ships) counts.set(ship.role, (counts.get(ship.role) ?? 0) + 1);
+  const ships = [...counts].map(([role, n]) => `${n}× ${shipTypeName(faction, role)}`).join(', ') || 'none';
+  const cannotBuild = side.cannotBuild.map((role) => shipTypeName(faction, role)).join(', ');
+  return `<tr><td>${FACTION_LABEL[faction]}</td><td>
+    ${worldTotal(w)} worlds: ${worlds}<br>
+    Starbase: ${side.starbase ? 'yes' : 'no'}. Ships: ${ships}<br>
+    ${side.starbucks} Starbucks${cannotBuild ? `. Cannot build: ${cannotBuild}` : ''}<br>
+    ${victoryText(side)}
+  </td></tr>`;
+}
+
+function renderScenarioInfo(): void {
+  const sc = selectedScenario();
+  const firstMove = sc.firstMove ? `${FACTION_LABEL[sc.firstMove]} moves first.` : 'You move first.';
+  scenarioInfo.innerHTML = `
+    ${sc.menuLine ? `<div class="menu-line">${escapeHtml(sc.menuLine)}</div>` : ''}
+    ${sc.description ? `<p>${escapeHtml(sc.description)}</p>` : ''}
+    <table>${sideSummary('hierarchy', sc.sides.hierarchy)}${sideSummary('alliance', sc.sides.alliance)}</table>
+    <div>${firstMove}</div>
+  `;
+}
+
+async function loadScenarioFiles(files: FileList): Promise<void> {
+  scenarioError.textContent = '';
+  let last = -1;
+  for (const file of Array.from(files)) {
+    try {
+      const sc1 = parseSc1Scenario(new Uint8Array(await file.arrayBuffer()), file.name);
+      scenarios.push(sc1ToScenarioConfig(sc1));
+      last = scenarios.length - 1;
+    } catch (err) {
+      if (!(err instanceof ScenarioFileError)) throw err;
+      scenarioError.textContent = err.message;
+    }
+  }
+  if (last >= 0) refreshScenarioOptions(last);
+}
 
 let state: GameState | null = null;
 const selection: Selection = {};
@@ -37,7 +126,11 @@ function draw(): void {
     reachable: selection.reachable,
   });
   renderInfoPanel(infoPanel, state, selection.selectedPlanetId, selection.selectedShipId, selection.movingStarbaseFromPlanetId);
-  turnLabel.textContent = `Turn ${state.turn} — ${FACTION_LABEL[state.humanFaction]} (you)`;
+  const won = winner(state);
+  turnLabel.textContent = won
+    ? `${FACTION_LABEL[won]} wins!`
+    : `Turn ${state.turn} — ${FACTION_LABEL[state.humanFaction]} (you)`;
+  scenarioBar.textContent = `${state.scenario.title}. ${victoryText(state.scenario.sides[state.humanFaction])}.`;
   starbucksBar.textContent = `Alliance: ${state.starbucks.alliance} | Hierarchy: ${state.starbucks.hierarchy} Starbucks`;
 }
 
@@ -52,14 +145,14 @@ function resize(): void {
 /** Runs the AI's turn(s) until control returns to the human, in case of any transient states. */
 function playAiTurnsUntilHuman(): void {
   if (!state) return;
-  while (state.currentFaction !== state.humanFaction) {
+  while (state.currentFaction !== state.humanFaction && !winner(state)) {
     runAiTurn(state, state.currentFaction);
     endTurn(state);
   }
 }
 
 function startGame(humanFaction: Faction): void {
-  state = generateGalaxy(DEFAULT_SCENARIO, humanFaction);
+  state = generateGalaxy(selectedScenario(), humanFaction);
   selection.selectedPlanetId = undefined;
   selection.selectedShipId = undefined;
   selection.movingStarbaseFromPlanetId = undefined;
@@ -113,7 +206,7 @@ infoPanel.addEventListener('click', (event) => {
 });
 
 endTurnBtn.addEventListener('click', () => {
-  if (!state) return;
+  if (!state || winner(state)) return;
   endTurn(state);
   playAiTurnsUntilHuman();
   refreshAfterEndTurn(state, selection);
@@ -124,6 +217,14 @@ newGameBtn.addEventListener('click', () => {
   state = null;
   factionPicker.classList.remove('hidden');
 });
+
+scenarioSelect.addEventListener('change', renderScenarioInfo);
+loadScenarioBtn.addEventListener('click', () => scenarioFileInput.click());
+scenarioFileInput.addEventListener('change', () => {
+  if (scenarioFileInput.files) void loadScenarioFiles(scenarioFileInput.files);
+  scenarioFileInput.value = '';
+});
+refreshScenarioOptions(0);
 
 pickAllianceBtn.addEventListener('click', () => startGame('alliance'));
 pickHierarchyBtn.addEventListener('click', () => startGame('hierarchy'));

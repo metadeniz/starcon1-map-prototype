@@ -1,5 +1,6 @@
 import type { Faction, GameState, Planet, Ship } from '../model/types';
 import { SHIP_ROSTER } from '../model/shipRoster';
+import { buildableRoles } from '../game/gameState';
 import { buildDurationTurns, IMPROVEMENT_LABEL, IMPROVEMENT_TYPES, isImprovementAllowed } from '../model/improvements';
 
 const OWNER_LABEL: Record<Planet['owner'], string> = {
@@ -44,7 +45,9 @@ function renderShipOrders(ship: Ship, planet: Planet): string {
 
 function renderShipBuildActions(state: GameState, planet: Planet, owner: Faction): string {
   if (!(planet.hasStarbase && planet.owner === owner)) return '';
+  const allowed = buildableRoles(state, owner);
   const buttons = SHIP_ROSTER[owner]
+    .filter((def) => allowed.includes(def.role))
     .map((def) => {
       const affordable = state.starbucks[owner] >= def.cost;
       return `<button data-action="build-ship" data-owner="${owner}" data-role="${def.role}" data-planet="${planet.id}" ${affordable ? '' : 'disabled'}>${def.name} (${def.cost}, crew ${def.crew})</button>`;
@@ -86,7 +89,7 @@ export function renderInfoPanel(
   const typeLabel = planet.explored ? TYPE_LABEL[planet.type] : 'Unknown';
   const ownerLabel = planet.explored ? OWNER_LABEL[planet.owner] : 'Unknown';
   const starbaseLabel = planet.explored ? (planet.hasStarbase ? 'Yes' : 'No') : 'Unknown';
-  const improvementLabel = planet.explored ? (planet.improvement ? IMPROVEMENT_LABEL[planet.improvement] : 'None') : 'Unknown';
+  const improvementLabel = planet.explored ? (planet.improvement ? `${IMPROVEMENT_LABEL[planet.improvement]}${planet.fortified ? ' (fortified)' : ''}` : 'None') : 'Unknown';
   const constructionRow =
     planet.explored && planet.underConstruction
       ? `<div class="row"><span class="label">Under construction</span><span>${IMPROVEMENT_LABEL[planet.underConstruction.type]} for ${OWNER_LABEL[planet.underConstruction.owner]} (${planet.underConstruction.turnsRemaining} turn${planet.underConstruction.turnsRemaining > 1 ? 's' : ''} left)</span></div>`

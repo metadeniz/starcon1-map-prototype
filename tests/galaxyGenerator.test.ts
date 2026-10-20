@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { generateGalaxy, planetTypeDeck } from '../src/generation/galaxyGenerator';
+import { generateGalaxy, worldTotal } from '../src/generation/galaxyGenerator';
 import { SC1, clusterFieldSize, generateCluster, type ClusterStar } from '../src/generation/sc1Cluster';
 import { DEFAULT_SCENARIO } from '../src/generation/scenarioConfig';
 import { mulberry32 } from '../src/generation/rng';
-import type { Connection, GameState, Planet } from '../src/model/types';
+import { SC1_PRESETS } from '../src/generation/sc1Presets';
+import { sc1ToScenarioConfig } from '../src/generation/sc1Scenario';
+import type { Connection, Faction, GameState, Planet, ScenarioConfig } from '../src/model/types';
 
 function buildAdjacency(planets: Planet[], connections: Connection[]): Map<string, Set<string>> {
   const adjacency = new Map<string, Set<string>>();
@@ -120,72 +122,89 @@ describe('generateCluster (SC1 rules in 2D)', () => {
   });
 });
 
-describe('planetTypeDeck', () => {
-  it('splits a side into exact counts by largest remainder', () => {
-    expect(planetTypeDeck({ life: 0.25, mineral: 0.35, dead: 0.4 }, 15)).toEqual({ life: 4, mineral: 5, dead: 6 });
-    expect(planetTypeDeck({ life: 1, mineral: 1, dead: 1 }, 10)).toEqual({ life: 4, mineral: 3, dead: 3 });
-  });
-});
+const SCENARIOS: ScenarioConfig[] = [DEFAULT_SCENARIO, ...SC1_PRESETS.map(sc1ToScenarioConfig)];
+const FACTIONS: Faction[] = ['alliance', 'hierarchy'];
+
+/** Planets on each side: every Hierarchy star lies above every Alliance star. */
+function sides(state: GameState): Record<Faction, Planet[]> {
+  const byY = [...state.planets].sort((a, b) => a.y - b.y);
+  const h = worldTotal(state.scenario.sides.hierarchy.worlds);
+  return { hierarchy: byY.slice(0, h), alliance: byY.slice(h) };
+}
 
 describe('generateGalaxy', () => {
-  for (const seed of SEEDS) {
-    describe(`seed ${seed}`, () => {
-      const state: GameState = generateGalaxy(DEFAULT_SCENARIO, 'alliance', seed);
-      const allianceHome = state.planets.find((p) => p.owner === 'alliance')!;
-      const hierarchyHome = state.planets.find((p) => p.owner === 'hierarchy')!;
+  for (const scenario of SCENARIOS) {
+    for (const seed of SEEDS) {
+      describe(`${scenario.title}, seed ${seed}`, () => {
+        const state = generateGalaxy(scenario, 'alliance', seed);
+        const bySide = sides(state);
 
-      it('creates the expected planet count', () => {
-        expect(state.planets.length).toBe(DEFAULT_SCENARIO.totalPlanets);
-      });
+        it('has one star per scenario world, and is fully connected', () => {
+          expect(state.planets.length).toBe(worldTotal(scenario.sides.alliance.worlds) + worldTotal(scenario.sides.hierarchy.worlds));
+          const adjacency = buildAdjacency(state.planets, state.connections);
+          expect(connectedComponent(state.planets[0].id, adjacency).size).toBe(state.planets.length);
+        });
 
-      it('is fully connected', () => {
-        const adjacency = buildAdjacency(state.planets, state.connections);
-        expect(connectedComponent(state.planets[0].id, adjacency).size).toBe(state.planets.length);
-      });
-
-      it('has exactly one homeworld per side, a life world with a starbase', () => {
-        for (const owner of ['alliance', 'hierarchy'] as const) {
-          const homes = state.planets.filter((p) => p.owner === owner);
-          expect(homes.length).toBe(1);
-          expect(homes[0].hasStarbase).toBe(true);
-          expect(homes[0].type).toBe('life');
-          expect(homes[0].explored).toBe(true);
-        }
-      });
-
-      it('puts each homeworld at the far end of its side, Hierarchy on top', () => {
-        expect(hierarchyHome.y).toBe(Math.min(...state.planets.map((p) => p.y)));
-        expect(allianceHome.y).toBe(Math.max(...state.planets.map((p) => p.y)));
-      });
-
-      it('deals each side exactly its share of planet types', () => {
-        // Every Hierarchy star (including the centre star) lies above every Alliance star.
-        const byY = [...state.planets].sort((a, b) => a.y - b.y);
-        const sides = [byY.slice(0, 15), byY.slice(15)];
-        const deck = planetTypeDeck(DEFAULT_SCENARIO.planetTypeWeights, 15);
-        for (const side of sides) {
-          for (const type of ['life', 'mineral', 'dead'] as const) {
-            expect(side.filter((p) => p.type === type).length).toBe(deck[type]);
+        it("deals each side exactly its scenario's worlds", () => {
+          for (const faction of FACTIONS) {
+            const w = scenario.sides[faction].worlds;
+            const planets = bySide[faction];
+            const count = (type: Planet['type'], improvement?: string, fortified = false) =>
+              planets.filter((p) => p.type === type && p.improvement === improvement && !!p.fortified === fortified).length;
+            expect(count('dead')).toBe(w.dead);
+            expect(count('mineral')).toBe(w.mineral);
+            expect(count('life')).toBe(w.life);
+            expect(count('life', 'colony')).toBe(w.colony);
+            expect(count('life', 'colony', true)).toBe(w.fortifiedColony);
+            expect(count('mineral', 'mine')).toBe(w.mine);
+            expect(count('mineral', 'mine', true)).toBe(w.fortifiedMine);
+            for (const p of planets.filter((p) => p.improvement)) {
+              expect(p.owner).toBe(faction);
+              expect(p.explored).toBe(true);
+            }
           }
-        }
-      });
+        });
 
-      it('gives each side its starting ships at its homeworld', () => {
-        const allianceShips = state.ships.filter((s) => s.owner === 'alliance');
-        const hierarchyShips = state.ships.filter((s) => s.owner === 'hierarchy');
-        expect(allianceShips.every((s) => s.planetId === allianceHome.id)).toBe(true);
-        expect(hierarchyShips.every((s) => s.planetId === hierarchyHome.id)).toBe(true);
-        expect(allianceShips.length).toBe(DEFAULT_SCENARIO.startingShips.alliance.length);
-        expect(hierarchyShips.length).toBe(DEFAULT_SCENARIO.startingShips.hierarchy.length);
-        expect(allianceShips.every((s) => s.movesRemaining === DEFAULT_SCENARIO.movesPerTurn)).toBe(true);
-        expect(allianceShips.every((s) => s.currentCrew === s.crew)).toBe(true);
+        it('puts a starbase on the far end of each side that has one', () => {
+          const top = bySide.hierarchy[0];
+          const bottom = bySide.alliance[bySide.alliance.length - 1];
+          for (const [faction, end] of [['hierarchy', top], ['alliance', bottom]] as const) {
+            const bases = state.planets.filter((p) => p.hasStarbase && p.owner === faction);
+            expect(bases).toEqual(scenario.sides[faction].starbase ? [end] : []);
+          }
+        });
+
+        it('gives each side its ships, on stars the enemy does not own', () => {
+          for (const faction of FACTIONS) {
+            const ships = state.ships.filter((s) => s.owner === faction);
+            expect(ships.length).toBe(scenario.sides[faction].ships.length);
+            for (const ship of ships) {
+              const planet = state.planets.find((p) => p.id === ship.planetId)!;
+              expect(planet.explored).toBe(true);
+              expect(planet.owner === faction || planet.owner === 'neutral' || state.ships.some((s) => s.planetId === planet.id && s.owner !== faction)).toBe(true);
+              if (scenario.sides[faction].ships.every((s) => s.zone < 2)) expect(bySide[faction]).toContain(planet);
+            }
+          }
+        });
+
+        it("starts with each side's Starbucks, and the scenario's first mover", () => {
+          expect(state.starbucks.alliance).toBe(scenario.sides.alliance.starbucks);
+          expect(state.starbucks.hierarchy).toBe(scenario.sides.hierarchy.starbucks);
+          expect(state.currentFaction).toBe(scenario.firstMove ?? 'alliance');
+        });
       });
-    });
+    }
   }
 
-  it('gives the Hierarchy the extra planet when the total is odd', () => {
-    const state = generateGalaxy({ ...DEFAULT_SCENARIO, totalPlanets: 31 }, 'alliance', 7);
-    expect(state.planets.length).toBe(31);
+  it('sends zone 2 ships into enemy space', () => {
+    const proving = SCENARIOS.find((s) => s.title === 'Proving Ground')!;
+    expect(proving.sides.alliance.ships[0].zone).toBe(2);
+    for (const seed of SEEDS) {
+      const state = generateGalaxy(proving, 'alliance', seed);
+      const enemySide = sides(state).hierarchy.map((p) => p.id);
+      const allianceShips = state.ships.filter((s) => s.owner === 'alliance');
+      expect(allianceShips.filter((s) => enemySide.includes(s.planetId)).length).toBe(1);
+    }
   });
 
   it('is reproducible from a seed', () => {
@@ -194,13 +213,8 @@ describe('generateGalaxy', () => {
     expect(a.planets.map((p) => [p.x, p.y, p.type])).toEqual(b.planets.map((p) => [p.x, p.y, p.type]));
   });
 
-  it('sets the chosen human faction and starts with the human going first', () => {
-    const asAlliance = generateGalaxy(DEFAULT_SCENARIO, 'alliance', 1);
-    expect(asAlliance.humanFaction).toBe('alliance');
-    expect(asAlliance.currentFaction).toBe('alliance');
-
-    const asHierarchy = generateGalaxy(DEFAULT_SCENARIO, 'hierarchy', 1);
-    expect(asHierarchy.humanFaction).toBe('hierarchy');
-    expect(asHierarchy.currentFaction).toBe('hierarchy');
+  it('lets the human move first when the scenario does not say', () => {
+    expect(generateGalaxy(DEFAULT_SCENARIO, 'hierarchy', 1).currentFaction).toBe('hierarchy');
+    expect(generateGalaxy(DEFAULT_SCENARIO, 'alliance', 1).currentFaction).toBe('alliance');
   });
 });

@@ -135,7 +135,10 @@
         display: none;
       }
       .picker-card {
-        max-width: 460px;
+        max-width: 560px;
+        max-height: 100%;
+        overflow-y: auto;
+        box-sizing: border-box;
         text-align: center;
         padding: 24px;
       }
@@ -159,6 +162,56 @@
         padding: 12px 18px;
         font-size: 14px;
       }
+      .scenario-row {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin-top: 8px;
+      }
+      select {
+        background: #1c2942;
+        color: #d7dde8;
+        border: 1px solid #35507a;
+        border-radius: 4px;
+        padding: 6px;
+        font-size: 13px;
+        max-width: 280px;
+      }
+      #scenario-info {
+        text-align: left;
+        font-size: 12px;
+        color: #a9b2c4;
+        margin-top: 12px;
+        line-height: 1.5;
+      }
+      #scenario-info .menu-line {
+        color: #d7dde8;
+        font-style: italic;
+      }
+      #scenario-info table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+      }
+      #scenario-info td {
+        padding: 2px 4px;
+        vertical-align: top;
+        border-bottom: 1px dashed #232a3a;
+      }
+      #scenario-info td:first-child {
+        color: #8892a6;
+        white-space: nowrap;
+      }
+      #scenario-error {
+        color: #ff8a8a;
+        font-size: 12px;
+        min-height: 1em;
+        margin-top: 6px;
+      }
+      #scenario-bar {
+        font-size: 12px;
+        color: #a9b2c4;
+      }
       #pick-hierarchy {
         border-color: #ff5c5c;
       }
@@ -181,6 +234,7 @@
           </div>
         </div>
         <div id="starbucks-bar" class="row"></div>
+        <div id="scenario-bar"></div>
         <div id="hint">Click a planet to inspect it. Click a ship's icon (or its Select button) to give it orders, then click a highlighted destination to move it.</div>
         <div id="info-panel">
           <div id="info-empty">No planet selected.</div>
@@ -189,11 +243,18 @@
     </div>
     <div id="faction-picker">
       <div class="picker-card">
-        <h1>Choose your side</h1>
+        <h1>Choose a scenario and your side</h1>
         <p>
           The Hierarchy of Battle Thralls holds the top of the galaxy; the Alliance of Free Stars holds the bottom.
           Whichever side you don't pick is played by the computer.
         </p>
+        <div class="scenario-row">
+          <select id="scenario-select" aria-label="Scenario"></select>
+          <button id="load-scenario-btn">Load SCENARIO file…</button>
+          <input id="scenario-file" type="file" multiple hidden />
+        </div>
+        <div id="scenario-error"></div>
+        <div id="scenario-info"></div>
         <div class="picker-buttons">
           <button id="pick-hierarchy" class="picker-btn">Play Hierarchy of Battle Thralls</button>
           <button id="pick-alliance" class="picker-btn">Play Alliance of Free Stars</button>

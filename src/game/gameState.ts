@@ -1,5 +1,5 @@
 import type { Connection, Faction, GameState, ImprovementType, Planet, Ship } from '../model/types';
-import { getShipDefinition, type ShipRole } from '../model/shipRoster';
+import { getShipDefinition, SHIP_ROSTER, type ShipRole } from '../model/shipRoster';
 import { nextId } from '../model/id';
 import { buildDurationTurns, isImprovementAllowed } from '../model/improvements';
 
@@ -168,6 +168,9 @@ export function buildShip(owner: Faction, planetId: string, role: ShipRole, stat
   if (!planet.hasStarbase || planet.owner !== owner) {
     throw new InvalidActionError('No starbase owned by this side at that planet');
   }
+  if (state.scenario.sides[owner].cannotBuild.includes(role)) {
+    throw new InvalidActionError('This scenario does not let this side build that ship');
+  }
   const def = getShipDefinition(owner, role);
   if (state.starbucks[owner] < def.cost) {
     throw new InvalidActionError('Not enough Starbucks');
@@ -185,11 +188,39 @@ export function buildShip(owner: Faction, planetId: string, role: ShipRole, stat
   });
 }
 
+/** The side that opens each round: the scenario's first mover, or the human. */
+export function firstMover(state: GameState): Faction {
+  return state.scenario.firstMove ?? state.humanFaction;
+}
+
+/** Ship roles `owner` may build in this scenario. */
+export function buildableRoles(state: GameState, owner: Faction): ShipRole[] {
+  return SHIP_ROSTER[owner].map((d) => d.role).filter((role) => !state.scenario.sides[owner].cannotBuild.includes(role));
+}
+
+/**
+ * The side that has met its scenario victory conditions, if any. A side with no conditions set
+ * cannot win this way.
+ */
+export function winner(state: GameState): Faction | null {
+  for (const faction of ['alliance', 'hierarchy'] as const) {
+    const v = state.scenario.sides[faction].victory;
+    if (!v.enemyHasNoShips && !v.enemyHasNoColonies && !v.enemyHasNoMines) continue;
+    const enemy = otherFaction(faction);
+    const has = (improvement: 'colony' | 'mine') => state.planets.some((p) => p.owner === enemy && p.improvement === improvement);
+    if (v.enemyHasNoShips && state.ships.some((s) => s.owner === enemy)) continue;
+    if (v.enemyHasNoColonies && has('colony')) continue;
+    if (v.enemyHasNoMines && has('mine')) continue;
+    return faction;
+  }
+  return null;
+}
+
 /**
  * Ends the current side's turn and hands control to the other side, refilling only its ships'
  * movement points. Sides alternate; a new round (turn counter, construction progress, mine
- * income) only advances once control cycles back to `humanFaction`, so a full round still means
- * both sides have acted — matching the original "1-3 turns to build" pacing.
+ * income) only advances once control cycles back to the side that moves first, so a full round
+ * still means both sides have acted — matching the original "1-3 turns to build" pacing.
  */
 export function endTurn(state: GameState): void {
   state.currentFaction = otherFaction(state.currentFaction);
@@ -205,7 +236,7 @@ export function endTurn(state: GameState): void {
     }
   }
 
-  if (state.currentFaction !== state.humanFaction) return;
+  if (state.currentFaction !== firstMover(state)) return;
 
   state.turn += 1;
   for (const planet of state.planets) {

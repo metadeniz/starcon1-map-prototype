@@ -20,6 +20,8 @@ export const SC1 = {
   MAX_NEW_LINKS: 3,
   /** ...and no star may ever have more than this many. */
   MAX_LINKS: 4,
+  /** Stars closer than this to the centre are a side's front; the rest are its back. */
+  FRONT: 47,
 } as const;
 
 // Field size for a 28-star map, in SC1 units. SC1's cylinder is 85 per half by 118 radius;
@@ -27,6 +29,7 @@ export const SC1 = {
 const HALF_LENGTH_AT_28 = 140;
 const HALF_WIDTH_AT_28 = 118;
 const EDGE = 10; // SC1 keeps stars 10 units in from the end of each half
+const SC1_SPAN = 85; // positions per half in SC1 (x 10-94)
 const MAX_TRIES_PER_STAR = 5000;
 
 export type ClusterSide = 'A' | 'B';
@@ -121,4 +124,13 @@ function linkCandidates(stars: ClusterStar[], along: number, across: number): Cl
     }
   }
   return candidates;
+}
+
+/**
+ * SC1 splits each side into back and front at 47 of its 85 units from the centre. The 2D field
+ * is longer, so the split is scaled to the same share of each half.
+ */
+export function isFrontStar(cluster: Cluster, star: ClusterStar): boolean {
+  const span = cluster.centre - EDGE;
+  return Math.abs(star.along - cluster.centre) < (SC1.FRONT * span) / SC1_SPAN;
 }
