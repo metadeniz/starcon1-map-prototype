@@ -6,8 +6,4 @@ export const LAYOUT = {
   xMax: 860,
   yMin: 40,
   yMax: 960,
-  topY: [60, 300] as const,
-  chokeY: [460, 540] as const,
-  chokeX: [360, 560] as const,
-  bottomY: [700, 940] as const,
 };

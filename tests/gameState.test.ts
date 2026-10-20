@@ -57,7 +57,6 @@ function makeState(): GameState {
     turn: 1,
     scenario: {
       totalPlanets: 15,
-      neckSize: { type: 'fixed', size: 3 },
       planetTypeWeights: { life: 0.25, mineral: 0.35, dead: 0.4 },
       startingShips: { alliance: ['shofixti-scout'], hierarchy: ['umgah-drone'] },
       movesPerTurn: 3,

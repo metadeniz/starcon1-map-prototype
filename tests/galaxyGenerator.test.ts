@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { generateGalaxy, resolveNeckSize } from '../src/generation/galaxyGenerator';
+import { generateGalaxy, planetTypeDeck } from '../src/generation/galaxyGenerator';
+import { SC1, clusterFieldSize, generateCluster, type ClusterStar } from '../src/generation/sc1Cluster';
 import { DEFAULT_SCENARIO } from '../src/generation/scenarioConfig';
-import { LAYOUT } from '../src/generation/layout';
 import { mulberry32 } from '../src/generation/rng';
 import type { Connection, GameState, Planet } from '../src/model/types';
 
@@ -15,13 +15,13 @@ function buildAdjacency(planets: Planet[], connections: Connection[]): Map<strin
   return adjacency;
 }
 
-function connectedComponent(start: string, adjacency: Map<string, Set<string>>, blocked: Set<string> = new Set()): Set<string> {
+function connectedComponent(start: string, adjacency: Map<string, Set<string>>): Set<string> {
   const visited = new Set<string>([start]);
   const queue = [start];
   while (queue.length) {
     const current = queue.shift()!;
     for (const neighbor of adjacency.get(current) ?? []) {
-      if (blocked.has(neighbor) || visited.has(neighbor)) continue;
+      if (visited.has(neighbor)) continue;
       visited.add(neighbor);
       queue.push(neighbor);
     }
@@ -29,141 +29,148 @@ function connectedComponent(start: string, adjacency: Map<string, Set<string>>, 
   return visited;
 }
 
-/**
- * Classifies a planet by which fixed layout band its y falls in. Generation always places
- * Hierarchy in LAYOUT.topY, the neck in LAYOUT.chokeY, and Alliance in LAYOUT.bottomY, with
- * comfortable gaps between bands, so this is a reliable black-box way to tell them apart
- * without relying on any internal "which region" tag.
- */
-function regionOf(y: number): 'top' | 'neck' | 'bottom' {
-  const topNeckMid = (LAYOUT.topY[1] + LAYOUT.chokeY[0]) / 2;
-  const neckBottomMid = (LAYOUT.chokeY[1] + LAYOUT.bottomY[0]) / 2;
-  if (y < topNeckMid) return 'top';
-  if (y < neckBottomMid) return 'neck';
-  return 'bottom';
-}
+const dist2 = (a: ClusterStar, b: ClusterStar) => (a.along - b.along) ** 2 + (a.across - b.across) ** 2;
 
 const SEEDS = [1, 42, 1337, 99991, 2024];
+
+describe('generateCluster (SC1 rules in 2D)', () => {
+  for (const [countA, countB] of [
+    [1, 1],
+    [6, 6],
+    [15, 15],
+    [25, 25],
+  ]) {
+    for (const seed of SEEDS) {
+      describe(`${countA}+${countB} stars, seed ${seed}`, () => {
+        const cluster = generateCluster(mulberry32(seed), countA, countB);
+        const { stars } = cluster;
+
+        it('places the requested number of stars on each side', () => {
+          expect(stars.filter((s) => s.side === 'A').length).toBe(countA);
+          expect(stars.filter((s) => s.side === 'B').length).toBe(countB);
+        });
+
+        it('puts the first star at the centre and each side in its own half', () => {
+          expect(stars[0].along).toBe(cluster.centre);
+          for (const s of stars.slice(1)) {
+            if (s.side === 'A') expect(s.along).toBeGreaterThan(cluster.centre);
+            else expect(s.along).toBeLessThan(cluster.centre);
+            expect(Math.abs(s.across)).toBeLessThanOrEqual(cluster.halfWidth);
+          }
+        });
+
+        it('links exactly the pairs closer than LINK_MAX, and keeps every pair at least MIN_DIST apart', () => {
+          for (let i = 0; i < stars.length; i++) {
+            for (let j = i + 1; j < stars.length; j++) {
+              const a = stars[i];
+              const b = stars[j];
+              const d2 = dist2(a, b);
+              expect(d2).toBeGreaterThanOrEqual(SC1.MIN_DIST ** 2);
+              expect(a.links.includes(b)).toBe(d2 < SC1.LINK_MAX ** 2);
+            }
+          }
+        });
+
+        it('has no near misses: no unlinked pair inside the window closer than GAP_MAX', () => {
+          for (const a of stars) {
+            for (const b of stars) {
+              if (a === b || a.links.includes(b)) continue;
+              const inWindow = Math.abs(a.along - b.along) <= SC1.WINDOW && Math.abs(a.across - b.across) <= SC1.WINDOW;
+              if (inWindow) expect(dist2(a, b)).toBeGreaterThanOrEqual(SC1.GAP_MAX ** 2);
+            }
+          }
+        });
+
+        it('caps links at 4 per star and is fully connected', () => {
+          for (const s of stars) expect(s.links.length).toBeLessThanOrEqual(SC1.MAX_LINKS);
+          const seen = new Set([stars[0]]);
+          const queue = [stars[0]];
+          while (queue.length) for (const n of queue.shift()!.links) if (!seen.has(n)) seen.add(n), queue.push(n);
+          expect(seen.size).toBe(stars.length);
+        });
+      });
+    }
+  }
+
+  it('matches SC1’s 3D link stats for a 28-star map (37.8 links, 4.5 dead ends on average)', () => {
+    let links = 0;
+    let deadEnds = 0;
+    const runs = 100;
+    for (let seed = 1; seed <= runs; seed++) {
+      const { stars } = generateCluster(mulberry32(seed), 14, 14);
+      for (const s of stars) {
+        links += s.links.length;
+        if (s.links.length === 1) deadEnds++;
+      }
+    }
+    expect(links / 2 / runs).toBeGreaterThan(35);
+    expect(links / 2 / runs).toBeLessThan(40);
+    expect(deadEnds / runs).toBeGreaterThan(3.5);
+    expect(deadEnds / runs).toBeLessThan(5.5);
+  });
+
+  it('grows the field with the star count', () => {
+    expect(clusterFieldSize(28)).toEqual({ halfLength: 140, halfWidth: 118 });
+    expect(clusterFieldSize(50).halfWidth).toBeGreaterThan(clusterFieldSize(30).halfWidth);
+  });
+
+  it('rejects counts outside SC1’s 2-50 range', () => {
+    expect(() => generateCluster(mulberry32(1), 1, 0)).toThrow(RangeError);
+    expect(() => generateCluster(mulberry32(1), 26, 25)).toThrow(RangeError);
+  });
+});
+
+describe('planetTypeDeck', () => {
+  it('splits a side into exact counts by largest remainder', () => {
+    expect(planetTypeDeck({ life: 0.25, mineral: 0.35, dead: 0.4 }, 15)).toEqual({ life: 4, mineral: 5, dead: 6 });
+    expect(planetTypeDeck({ life: 1, mineral: 1, dead: 1 }, 10)).toEqual({ life: 4, mineral: 3, dead: 3 });
+  });
+});
 
 describe('generateGalaxy', () => {
   for (const seed of SEEDS) {
     describe(`seed ${seed}`, () => {
       const state: GameState = generateGalaxy(DEFAULT_SCENARIO, 'alliance', seed);
+      const allianceHome = state.planets.find((p) => p.owner === 'alliance')!;
+      const hierarchyHome = state.planets.find((p) => p.owner === 'hierarchy')!;
 
       it('creates the expected planet count', () => {
         expect(state.planets.length).toBe(DEFAULT_SCENARIO.totalPlanets);
       });
 
-      it('splits planets evenly between the two sides, with the neck absorbing any odd leftover', () => {
-        const regions = state.planets.map((p) => regionOf(p.y));
-        const topCount = regions.filter((r) => r === 'top').length;
-        const bottomCount = regions.filter((r) => r === 'bottom').length;
-        const neckCount = regions.filter((r) => r === 'neck').length;
-
-        expect(topCount).toBe(bottomCount);
-        expect(topCount * 2 + neckCount).toBe(DEFAULT_SCENARIO.totalPlanets);
-        // Default scenario neck is random 2-4, but an odd total-minus-neck bumps it by one.
-        expect(neckCount).toBeGreaterThanOrEqual(2);
-        expect(neckCount).toBeLessThanOrEqual(5);
-      });
-
       it('is fully connected', () => {
         const adjacency = buildAdjacency(state.planets, state.connections);
-        const reached = connectedComponent(state.planets[0].id, adjacency);
-        expect(reached.size).toBe(state.planets.length);
+        expect(connectedComponent(state.planets[0].id, adjacency).size).toBe(state.planets.length);
       });
 
-      it('has exactly one alliance and one hierarchy homeworld with a starbase', () => {
-        const allianceHomes = state.planets.filter((p) => p.owner === 'alliance');
-        const hierarchyHomes = state.planets.filter((p) => p.owner === 'hierarchy');
-        expect(allianceHomes.length).toBe(1);
-        expect(hierarchyHomes.length).toBe(1);
-        expect(allianceHomes[0].hasStarbase).toBe(true);
-        expect(allianceHomes[0].type).toBe('life');
-        expect(hierarchyHomes[0].hasStarbase).toBe(true);
-        expect(hierarchyHomes[0].type).toBe('life');
-      });
-
-      it('places the Hierarchy on top and the Alliance on the bottom', () => {
-        const allianceHome = state.planets.find((p) => p.owner === 'alliance')!;
-        const hierarchyHome = state.planets.find((p) => p.owner === 'hierarchy')!;
-        expect(hierarchyHome.y).toBeLessThan(allianceHome.y);
-      });
-
-      it('never places a homeworld on a planet directly linked to the neck', () => {
-        const allianceHome = state.planets.find((p) => p.owner === 'alliance')!;
-        const hierarchyHome = state.planets.find((p) => p.owner === 'hierarchy')!;
-        const adjacency = buildAdjacency(state.planets, state.connections);
-        const neckIds = new Set(state.planets.filter((p) => regionOf(p.y) === 'neck').map((p) => p.id));
-
-        const allianceTouchesNeck = [...adjacency.get(allianceHome.id)!].some((id) => neckIds.has(id));
-        const hierarchyTouchesNeck = [...adjacency.get(hierarchyHome.id)!].some((id) => neckIds.has(id));
-        expect(allianceTouchesNeck).toBe(false);
-        expect(hierarchyTouchesNeck).toBe(false);
-      });
-
-      it('disconnects the two sides if the neutral neck is removed', () => {
-        const allianceHome = state.planets.find((p) => p.owner === 'alliance')!;
-        const hierarchyHome = state.planets.find((p) => p.owner === 'hierarchy')!;
-
-        // The two homeworlds ARE connected in the full graph...
-        const adjacency = buildAdjacency(state.planets, state.connections);
-        const fullReach = connectedComponent(allianceHome.id, adjacency);
-        expect(fullReach.has(hierarchyHome.id)).toBe(true);
-
-        // ...but NOT connected once every neutral planet (only homeworlds are non-neutral
-        // at generation time) is removed, proving every path between the two sides passes
-        // through the neutral neck.
-        const neutralIds = new Set(state.planets.filter((p) => p.owner === 'neutral').map((p) => p.id));
-        const reachWithoutNeutral = connectedComponent(allianceHome.id, adjacency, neutralIds);
-        expect(reachWithoutNeutral.has(hierarchyHome.id)).toBe(false);
-      });
-
-      it('connects the neck to at least 2 planets on each side', () => {
-        const regionById = new Map(state.planets.map((p) => [p.id, regionOf(p.y)]));
-        let topLinks = 0;
-        let bottomLinks = 0;
-        for (const c of state.connections) {
-          const ra = regionById.get(c.a)!;
-          const rb = regionById.get(c.b)!;
-          if (ra === 'neck' && rb === 'top') topLinks++;
-          if (rb === 'neck' && ra === 'top') topLinks++;
-          if (ra === 'neck' && rb === 'bottom') bottomLinks++;
-          if (rb === 'neck' && ra === 'bottom') bottomLinks++;
+      it('has exactly one homeworld per side, a life world with a starbase', () => {
+        for (const owner of ['alliance', 'hierarchy'] as const) {
+          const homes = state.planets.filter((p) => p.owner === owner);
+          expect(homes.length).toBe(1);
+          expect(homes[0].hasStarbase).toBe(true);
+          expect(homes[0].type).toBe('life');
+          expect(homes[0].explored).toBe(true);
         }
-        expect(topLinks).toBeGreaterThanOrEqual(2);
-        expect(bottomLinks).toBeGreaterThanOrEqual(2);
       });
 
-      it('has at least 2 distinct planets in each side bridging to the neck (not one planet with two edges)', () => {
-        const regionById = new Map(state.planets.map((p) => [p.id, regionOf(p.y)]));
-        const topBridgePlanets = new Set<string>();
-        const bottomBridgePlanets = new Set<string>();
-        for (const c of state.connections) {
-          const ra = regionById.get(c.a)!;
-          const rb = regionById.get(c.b)!;
-          if (ra === 'neck' && rb === 'top') topBridgePlanets.add(c.b);
-          if (rb === 'neck' && ra === 'top') topBridgePlanets.add(c.a);
-          if (ra === 'neck' && rb === 'bottom') bottomBridgePlanets.add(c.b);
-          if (rb === 'neck' && ra === 'bottom') bottomBridgePlanets.add(c.a);
-        }
-        expect(topBridgePlanets.size).toBeGreaterThanOrEqual(2);
-        expect(bottomBridgePlanets.size).toBeGreaterThanOrEqual(2);
+      it('puts each homeworld at the far end of its side, Hierarchy on top', () => {
+        expect(hierarchyHome.y).toBe(Math.min(...state.planets.map((p) => p.y)));
+        expect(allianceHome.y).toBe(Math.max(...state.planets.map((p) => p.y)));
       });
 
-      it('connects every neck planet directly to every other neck planet', () => {
-        const neckIds = state.planets.filter((p) => regionOf(p.y) === 'neck').map((p) => p.id);
-        const adjacency = buildAdjacency(state.planets, state.connections);
-        for (let i = 0; i < neckIds.length; i++) {
-          for (let j = i + 1; j < neckIds.length; j++) {
-            expect(adjacency.get(neckIds[i])!.has(neckIds[j])).toBe(true);
+      it('deals each side exactly its share of planet types', () => {
+        // Every Hierarchy star (including the centre star) lies above every Alliance star.
+        const byY = [...state.planets].sort((a, b) => a.y - b.y);
+        const sides = [byY.slice(0, 15), byY.slice(15)];
+        const deck = planetTypeDeck(DEFAULT_SCENARIO.planetTypeWeights, 15);
+        for (const side of sides) {
+          for (const type of ['life', 'mineral', 'dead'] as const) {
+            expect(side.filter((p) => p.type === type).length).toBe(deck[type]);
           }
         }
       });
 
       it('gives each side its starting ships at its homeworld', () => {
-        const allianceHome = state.planets.find((p) => p.owner === 'alliance')!;
-        const hierarchyHome = state.planets.find((p) => p.owner === 'hierarchy')!;
         const allianceShips = state.ships.filter((s) => s.owner === 'alliance');
         const hierarchyShips = state.ships.filter((s) => s.owner === 'hierarchy');
         expect(allianceShips.every((s) => s.planetId === allianceHome.id)).toBe(true);
@@ -176,6 +183,17 @@ describe('generateGalaxy', () => {
     });
   }
 
+  it('gives the Hierarchy the extra planet when the total is odd', () => {
+    const state = generateGalaxy({ ...DEFAULT_SCENARIO, totalPlanets: 31 }, 'alliance', 7);
+    expect(state.planets.length).toBe(31);
+  });
+
+  it('is reproducible from a seed', () => {
+    const a = generateGalaxy(DEFAULT_SCENARIO, 'alliance', 5);
+    const b = generateGalaxy(DEFAULT_SCENARIO, 'alliance', 5);
+    expect(a.planets.map((p) => [p.x, p.y, p.type])).toEqual(b.planets.map((p) => [p.x, p.y, p.type]));
+  });
+
   it('sets the chosen human faction and starts with the human going first', () => {
     const asAlliance = generateGalaxy(DEFAULT_SCENARIO, 'alliance', 1);
     expect(asAlliance.humanFaction).toBe('alliance');
@@ -184,78 +202,5 @@ describe('generateGalaxy', () => {
     const asHierarchy = generateGalaxy(DEFAULT_SCENARIO, 'hierarchy', 1);
     expect(asHierarchy.humanFaction).toBe('hierarchy');
     expect(asHierarchy.currentFaction).toBe('hierarchy');
-  });
-
-  describe('neckSize: fixed 0 (no neck)', () => {
-    const scenario = { ...DEFAULT_SCENARIO, totalPlanets: 16, neckSize: { type: 'fixed' as const, size: 0 } };
-    for (const seed of SEEDS) {
-      it(`seed ${seed} splits into two equal sides with a direct bridge`, () => {
-        const state = generateGalaxy(scenario, 'alliance', seed);
-        expect(state.planets.length).toBe(16);
-        const regions = state.planets.map((p) => regionOf(p.y));
-        expect(regions.filter((r) => r === 'neck').length).toBe(0);
-        expect(regions.filter((r) => r === 'top').length).toBe(8);
-        expect(regions.filter((r) => r === 'bottom').length).toBe(8);
-      });
-    }
-  });
-
-  describe('neckSize: fixed 3 (within the 2-4 recommended range)', () => {
-    const scenario = { ...DEFAULT_SCENARIO, totalPlanets: 31, neckSize: { type: 'fixed' as const, size: 3 } };
-    for (const seed of SEEDS) {
-      it(`seed ${seed} gives exactly 3 neck planets and equal sides`, () => {
-        const state = generateGalaxy(scenario, 'alliance', seed);
-        expect(state.planets.length).toBe(31);
-        const regions = state.planets.map((p) => regionOf(p.y));
-        expect(regions.filter((r) => r === 'neck').length).toBe(3);
-        expect(regions.filter((r) => r === 'top').length).toBe(14);
-        expect(regions.filter((r) => r === 'bottom').length).toBe(14);
-
-        const neckIds = state.planets.filter((p) => regionOf(p.y) === 'neck').map((p) => p.id);
-        const adjacency = buildAdjacency(state.planets, state.connections);
-        for (let i = 0; i < neckIds.length; i++) {
-          for (let j = i + 1; j < neckIds.length; j++) {
-            expect(adjacency.get(neckIds[i])!.has(neckIds[j])).toBe(true);
-          }
-        }
-      });
-    }
-  });
-
-  describe('neckSize: custom random range', () => {
-    const scenario = { ...DEFAULT_SCENARIO, totalPlanets: 40, neckSize: { type: 'random' as const, min: 5, max: 7 } };
-    for (const seed of SEEDS) {
-      it(`seed ${seed} keeps the neck within the configured range (± parity fix-up)`, () => {
-        const state = generateGalaxy(scenario, 'alliance', seed);
-        const regions = state.planets.map((p) => regionOf(p.y));
-        const neckCount = regions.filter((r) => r === 'neck').length;
-        expect(neckCount).toBeGreaterThanOrEqual(5);
-        expect(neckCount).toBeLessThanOrEqual(8);
-
-        const neckIds = state.planets.filter((p) => regionOf(p.y) === 'neck').map((p) => p.id);
-        const adjacency = buildAdjacency(state.planets, state.connections);
-        for (let i = 0; i < neckIds.length; i++) {
-          for (let j = i + 1; j < neckIds.length; j++) {
-            expect(adjacency.get(neckIds[i])!.has(neckIds[j])).toBe(true);
-          }
-        }
-      });
-    }
-  });
-});
-
-describe('resolveNeckSize', () => {
-  it('returns the fixed size unchanged', () => {
-    const rng = mulberry32(1);
-    expect(resolveNeckSize(rng, { type: 'fixed', size: 4 })).toBe(4);
-  });
-
-  it('returns a value within [min, max] for random config', () => {
-    const rng = mulberry32(1);
-    for (let i = 0; i < 200; i++) {
-      const size = resolveNeckSize(rng, { type: 'random', min: 2, max: 4 });
-      expect(size).toBeGreaterThanOrEqual(2);
-      expect(size).toBeLessThanOrEqual(4);
-    }
   });
 });
