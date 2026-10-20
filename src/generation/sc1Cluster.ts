@@ -83,8 +83,10 @@ function tryGenerate(rng: Rng, countA: number, countB: number): Cluster | null {
     let placed = false;
     for (let attempt = 0; attempt < MAX_TRIES_PER_STAR && !placed; attempt++) {
       const toA = countA > 0 && (i % 2 === 0 || countB === 0);
+      // The first star sits at the exact centre of the map. (SC1 puts it on the middle plane,
+      // a few units off the cylinder's axis; on a flat map the true centre is the equivalent.)
       const along = i === 0 ? centre : EDGE + randInt(rng, span) + (toA ? span + 1 : 0);
-      const across = randInt(rng, 2 * halfWidth + 1) - halfWidth;
+      const across = i === 0 ? 0 : randInt(rng, 2 * halfWidth + 1) - halfWidth;
 
       const candidates = linkCandidates(stars, along, across);
       if (!candidates) continue;

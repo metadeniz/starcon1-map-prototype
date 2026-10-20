@@ -3,6 +3,7 @@ import { generateGalaxy, worldTotal } from '../src/generation/galaxyGenerator';
 import { SC1, clusterFieldSize, generateCluster, type ClusterStar } from '../src/generation/sc1Cluster';
 import { DEFAULT_SCENARIO } from '../src/generation/scenarioConfig';
 import { mulberry32 } from '../src/generation/rng';
+import { LAYOUT } from '../src/generation/layout';
 import { SC1_PRESETS } from '../src/generation/sc1Presets';
 import { sc1ToScenarioConfig } from '../src/generation/sc1Scenario';
 import type { Connection, Faction, GameState, Planet, ScenarioConfig } from '../src/model/types';
@@ -54,6 +55,7 @@ describe('generateCluster (SC1 rules in 2D)', () => {
 
         it('puts the first star at the centre and each side in its own half', () => {
           expect(stars[0].along).toBe(cluster.centre);
+          expect(stars[0].across).toBe(0);
           for (const s of stars.slice(1)) {
             if (s.side === 'A') expect(s.along).toBeGreaterThan(cluster.centre);
             else expect(s.along).toBeLessThan(cluster.centre);
@@ -204,6 +206,14 @@ describe('generateGalaxy', () => {
       const enemySide = sides(state).hierarchy.map((p) => p.id);
       const allianceShips = state.ships.filter((s) => s.owner === 'alliance');
       expect(allianceShips.filter((s) => enemySide.includes(s.planetId)).length).toBe(1);
+    }
+  });
+
+  it('draws the centre star in the middle of the map', () => {
+    for (const scenario of SCENARIOS) {
+      const state = generateGalaxy(scenario, 'alliance', 11);
+      const mid = { x: (LAYOUT.xMin + LAYOUT.xMax) / 2, y: (LAYOUT.yMin + LAYOUT.yMax) / 2 };
+      expect(state.planets.some((p) => p.x === mid.x && p.y === mid.y)).toBe(true);
     }
   });
 
