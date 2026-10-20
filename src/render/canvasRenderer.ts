@@ -1,14 +1,12 @@
 import type { GameState, Owner, Planet, PlanetType } from '../model/types';
 import { LAYOUT } from '../generation/layout';
 import type { ReachablePlanet } from '../game/gameState';
-import { drawShipIcon } from './shipIcons';
+import { drawMapIcon, iconRadius, starbaseIconKey } from './shipIcons';
 
 const PLANET_RADIUS = 14;
-const SHIP_ICON_RADIUS = 6;
-// Roster crew spans roughly 6 (Shofixti Scout/Arilou Skiff) to 42 (Ur-Quan Dreadnought);
-// bigger hulls get a slightly bigger icon so ship "weight" reads at a glance.
-const MIN_CREW = 6;
-const MAX_CREW = 42;
+/** Distance from a planet's centre to the ring its starbase and ships sit on. */
+const RING_DISTANCE = PLANET_RADIUS + 16;
+const SHIP_HIT_RADIUS = 12;
 
 const TYPE_COLORS: Record<PlanetType, string> = {
   life: '#4caf6a',
@@ -17,7 +15,6 @@ const TYPE_COLORS: Record<PlanetType, string> = {
 };
 
 const UNEXPLORED_COLOR = '#2f6fb8';
-const BACKGROUND_COLOR = '#05070d';
 
 const OWNER_COLORS: Record<Owner, string> = {
   alliance: '#4da3ff',
@@ -52,9 +49,14 @@ export function toLogical(screenX: number, screenY: number, view: ViewTransform)
   return { x: (screenX - view.offsetX) / view.scale, y: (screenY - view.offsetY) / view.scale };
 }
 
-/** Screen position of every ship's icon, arranged in a ring around its planet. */
-export function computeShipIconScreenPositions(state: GameState, view: ViewTransform): Map<string, { x: number; y: number }> {
-  const planetsById = new Map(state.planets.map((p) => [p.id, p]));
+/**
+ * Screen position of every ship's icon, arranged in a ring around its planet. A starbase takes
+ * the first slot of its planet's ring (keyed by planet id in `starbases`).
+ */
+export function computeIconScreenPositions(
+  state: GameState,
+  view: ViewTransform,
+): { ships: Map<string, { x: number; y: number }>; starbases: Map<string, { x: number; y: number }> } {
   const shipsByPlanet = new Map<string, typeof state.ships>();
   for (const ship of state.ships) {
     const list = shipsByPlanet.get(ship.planetId) ?? [];
@@ -62,23 +64,28 @@ export function computeShipIconScreenPositions(state: GameState, view: ViewTrans
     shipsByPlanet.set(ship.planetId, list);
   }
 
-  const positions = new Map<string, { x: number; y: number }>();
-  for (const [planetId, ships] of shipsByPlanet) {
-    const p = planetsById.get(planetId);
-    if (!p) continue;
+  const ships = new Map<string, { x: number; y: number }>();
+  const starbases = new Map<string, { x: number; y: number }>();
+  for (const p of state.planets) {
+    const here = shipsByPlanet.get(p.id) ?? [];
+    const slots = here.length + (p.hasStarbase ? 1 : 0);
+    if (slots === 0) continue;
     const base = toScreen(p.x, p.y, view);
-    const dist = PLANET_RADIUS + 18;
-    ships.forEach((ship, i) => {
-      const angle = (i / ships.length) * Math.PI * 2;
-      positions.set(ship.id, { x: base.x + Math.cos(angle) * dist, y: base.y + Math.sin(angle) * dist });
-    });
+    // Start at the top-left so a lone starbase or ship sits clear of the links below it.
+    const slotPosition = (i: number) => {
+      const angle = -Math.PI * 0.75 + (i / slots) * Math.PI * 2;
+      return { x: base.x + Math.cos(angle) * RING_DISTANCE, y: base.y + Math.sin(angle) * RING_DISTANCE };
+    };
+    let slot = 0;
+    if (p.hasStarbase) starbases.set(p.id, slotPosition(slot++));
+    for (const ship of here) ships.set(ship.id, slotPosition(slot++));
   }
-  return positions;
+  return { ships, starbases };
 }
 
 export function shipAt(screenX: number, screenY: number, state: GameState, view: ViewTransform): string | undefined {
-  const positions = computeShipIconScreenPositions(state, view);
-  const hitRadius = SHIP_ICON_RADIUS + 4;
+  const positions = computeIconScreenPositions(state, view).ships;
+  const hitRadius = SHIP_HIT_RADIUS;
   let closest: string | undefined;
   let closestDist = Infinity;
   for (const [shipId, pos] of positions) {
@@ -158,33 +165,24 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
     ctx.lineWidth = p.id === options.selectedPlanetId ? 4 : 2.5;
     ctx.strokeStyle = OWNER_COLORS[p.owner];
     ctx.stroke();
-
-    if (p.hasStarbase) {
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, PLANET_RADIUS + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = '#f4d35e';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 3]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
   }
 
-  // Ship icons: one per ship, arranged around its planet
-  const shipPositions = computeShipIconScreenPositions(state, view);
+  // Starbases and ships: SC1's own map icons, arranged around their planet
+  const icons = computeIconScreenPositions(state, view);
+  for (const [planetId, pos] of icons.starbases) {
+    const owner = planetsById.get(planetId)?.owner;
+    if (owner === 'alliance' || owner === 'hierarchy') {
+      drawMapIcon(ctx, starbaseIconKey(owner), pos.x, pos.y, OWNER_COLORS[owner]);
+    }
+  }
   for (const ship of state.ships) {
-    const pos = shipPositions.get(ship.id);
+    const pos = icons.ships.get(ship.id);
     if (!pos) continue;
+    drawMapIcon(ctx, ship.type, pos.x, pos.y, OWNER_COLORS[ship.owner]);
 
-    const crewFraction = Math.min(1, Math.max(0, (ship.crew - MIN_CREW) / (MAX_CREW - MIN_CREW)));
-    const size = SHIP_ICON_RADIUS * (0.75 + 0.55 * crewFraction);
-
-    drawShipIcon(ctx, ship.type, pos.x, pos.y, size, OWNER_COLORS[ship.owner], BACKGROUND_COLOR);
-
-    // Selection ring: a fresh circle path, independent of whatever path the icon left behind.
     if (ship.id === options.selectedShipId) {
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, size + 2.5, 0, Math.PI * 2);
+      ctx.arc(pos.x, pos.y, Math.max(iconRadius(ship.type), 8) + 3, 0, Math.PI * 2);
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
