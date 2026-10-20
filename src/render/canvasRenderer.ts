@@ -25,11 +25,12 @@ const MARKER_GLYPHS = {
   fortified: ['#####', '#...#', '#...#', '#...#', '#####'],
 };
 const MARKER_SCALE = 3;
-// Pale versions of the owner colours, so the glyphs stand out on every planet fill.
-const MARKER_COLORS: Record<Owner, string> = {
-  alliance: '#d2e8ff',
-  hierarchy: '#ffd6d6',
-  neutral: '#eef0f5',
+// SC1's own marker colours (palette entries the exe picks at linear 0x412E): yellow for the
+// Alliance and blue for the Hierarchy, with the fortification square a lighter shade.
+const MARKER_COLORS: Record<Owner, { improvement: string; fortified: string }> = {
+  alliance: { improvement: '#ffff7f', fortified: '#ffffbb' },
+  hierarchy: { improvement: '#2fa7f3', fortified: '#5fbfff' },
+  neutral: { improvement: '#eef0f5', fortified: '#eef0f5' },
 };
 
 function drawMarkerGlyph(ctx: CanvasRenderingContext2D, glyph: string[], cx: number, cy: number, color: string): void {
@@ -195,10 +196,10 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
 
     // Improvements stay hidden until the planet is explored, as in the side panel.
     if (!p.explored) continue;
-    const markerColor = MARKER_COLORS[p.owner];
-    if (p.fortified || p.improvement === 'fortification') drawMarkerGlyph(ctx, MARKER_GLYPHS.fortified, s.x, s.y, markerColor);
-    if (p.improvement === 'colony') drawMarkerGlyph(ctx, MARKER_GLYPHS.colony, s.x, s.y, markerColor);
-    if (p.improvement === 'mine') drawMarkerGlyph(ctx, MARKER_GLYPHS.mine, s.x, s.y, markerColor);
+    const colors = MARKER_COLORS[p.owner];
+    if (p.fortified || p.improvement === 'fortification') drawMarkerGlyph(ctx, MARKER_GLYPHS.fortified, s.x, s.y, colors.fortified);
+    if (p.improvement === 'colony') drawMarkerGlyph(ctx, MARKER_GLYPHS.colony, s.x, s.y, colors.improvement);
+    if (p.improvement === 'mine') drawMarkerGlyph(ctx, MARKER_GLYPHS.mine, s.x, s.y, colors.improvement);
   }
 
   // Starbases and ships: SC1's own map icons, arranged around their planet
