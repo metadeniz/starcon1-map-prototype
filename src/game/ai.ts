@@ -1,5 +1,5 @@
 import type { Faction, GameState, ImprovementType } from '../model/types';
-import { buildShip, moveShip, reachablePlanets, startConstruction } from './gameState';
+import { buildableRoles, buildShip, moveShip, reachablePlanets, startConstruction } from './gameState';
 import { isImprovementAllowed } from '../model/improvements';
 import { SHIP_ROSTER } from '../model/shipRoster';
 
@@ -53,7 +53,8 @@ export function runAiTurn(state: GameState, faction: Faction): void {
   }
 
   for (const planet of state.planets.filter((p) => p.hasStarbase && p.owner === faction)) {
-    const affordable = [...SHIP_ROSTER[faction]].sort((a, b) => b.cost - a.cost).find((def) => state.starbucks[faction] >= def.cost);
+    const allowed = buildableRoles(state, faction);
+    const affordable = SHIP_ROSTER[faction].filter((def) => allowed.includes(def.role)).sort((a, b) => b.cost - a.cost).find((def) => state.starbucks[faction] >= def.cost);
     if (affordable) {
       buildShip(faction, planet.id, affordable.role, state);
     }

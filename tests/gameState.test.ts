@@ -10,6 +10,7 @@ import {
   starbaseDestinations,
 } from '../src/game/gameState';
 import type { GameState, Planet, Ship } from '../src/model/types';
+import { DEFAULT_SCENARIO } from '../src/generation/scenarioConfig';
 
 function makePlanet(overrides: Partial<Planet> & Pick<Planet, 'id'>): Planet {
   return {
@@ -55,14 +56,7 @@ function makeState(): GameState {
     ],
     ships: [makeShip({ id: 's1', planetId: 'A' })],
     turn: 1,
-    scenario: {
-      totalPlanets: 15,
-      planetTypeWeights: { life: 0.25, mineral: 0.35, dead: 0.4 },
-      startingShips: { alliance: ['shofixti-scout'], hierarchy: ['umgah-drone'] },
-      movesPerTurn: 3,
-      startingStarbucks: 25,
-      mineIncomePerTurn: 3,
-    },
+    scenario: DEFAULT_SCENARIO,
     starbucks: { alliance: 25, hierarchy: 25 },
     humanFaction: 'alliance',
     currentFaction: 'alliance',
