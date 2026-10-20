@@ -1,11 +1,9 @@
-// Star Control 1's own strategic-map icons: one per ship class plus a starbase for each side,
+// Star Control 1's own strategic-map icons: one per ship class plus starbases for each side,
 // extracted from the game's setup.pkg into sc1MapIcons.png (see sc1MapIconFrames.ts).
+// Each frame carries its own scale, because SC1 drew them on a 320x200 screen.
 
 import type { Faction } from '../model/types';
 import { SC1_MAP_ICON_FRAMES } from './sc1MapIconFrames';
-
-/** SC1 drew these on a 320x200 screen; scale them up so they read at the map's size. */
-export const ICON_SCALE = 2;
 
 const atlas: HTMLImageElement | undefined =
   typeof Image === 'undefined' ? undefined : new Image();
@@ -25,7 +23,7 @@ export function starbaseIconKey(owner: Faction): string {
 export function iconRadius(key: string): number {
   const frame = SC1_MAP_ICON_FRAMES[key];
   if (!frame) return 6;
-  return (Math.max(frame.w, frame.h) * ICON_SCALE) / 2;
+  return (Math.max(frame.w, frame.h) * frame.scale) / 2;
 }
 
 /**
@@ -48,10 +46,10 @@ export function drawMapIcon(
     return;
   }
   // Round to whole pixels so the scaled-up pixel art stays crisp.
-  const left = Math.round(cx - (frame.w / 2) * ICON_SCALE);
-  const top = Math.round(cy - (frame.h / 2) * ICON_SCALE);
+  const left = Math.round(cx - (frame.w / 2) * frame.scale);
+  const top = Math.round(cy - (frame.h / 2) * frame.scale);
   const smoothing = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(atlas, frame.x, frame.y, frame.w, frame.h, left, top, frame.w * ICON_SCALE, frame.h * ICON_SCALE);
+  ctx.drawImage(atlas, frame.x, frame.y, frame.w, frame.h, left, top, frame.w * frame.scale, frame.h * frame.scale);
   ctx.imageSmoothingEnabled = smoothing;
 }
