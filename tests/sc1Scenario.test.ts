@@ -73,4 +73,12 @@ describe('SC1 presets', () => {
     for (const p of state.planets) if (p.owner === 'alliance' && p.improvement === 'colony') p.improvement = undefined;
     expect(winner(state)).toBe('hierarchy');
   });
+
+  it('ends the game when a side has no ships and no starbase, even with no victory conditions set', () => {
+    const beginnersLuck = sc1ToScenarioConfig(SC1_PRESETS[0]);
+    const state = generateGalaxy(beginnersLuck, 'alliance', 3);
+    expect(winner(state)).toBeNull();
+    state.ships = state.ships.filter((s) => s.owner !== 'alliance'); // the lone Syreen is lost
+    expect(winner(state)).toBe('hierarchy');
+  });
 });

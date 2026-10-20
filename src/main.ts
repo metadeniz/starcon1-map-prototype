@@ -58,7 +58,9 @@ function victoryText(side: SideSetup): string {
     side.victory.enemyHasNoColonies && 'no colonies',
     side.victory.enemyHasNoMines && 'no mines',
   ].filter(Boolean);
-  return parts.length ? `Wins when the enemy has ${parts.join(' and ')}` : 'No victory condition set';
+  return parts.length
+    ? `Wins when the enemy has ${parts.join(' and ')}, or nothing left`
+    : 'Wins when the enemy has no ships and no starbase left';
 }
 
 function sideSummary(faction: Faction, side: SideSetup): string {

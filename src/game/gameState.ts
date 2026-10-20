@@ -199,16 +199,20 @@ export function buildableRoles(state: GameState, owner: Faction): ShipRole[] {
 }
 
 /**
- * The side that has met its scenario victory conditions, if any. A side with no conditions set
- * cannot win this way.
+ * The side that has won, if any. As in SC1, a side with no ships and no starbase left has lost;
+ * a scenario's victory conditions add earlier ways to win.
  */
 export function winner(state: GameState): Faction | null {
   for (const faction of ['alliance', 'hierarchy'] as const) {
+    const enemy = otherFaction(faction);
+    const enemyHasShips = state.ships.some((s) => s.owner === enemy);
+    const enemyHasStarbase = state.planets.some((p) => p.owner === enemy && p.hasStarbase);
+    if (!enemyHasShips && !enemyHasStarbase) return faction;
+
     const v = state.scenario.sides[faction].victory;
     if (!v.enemyHasNoShips && !v.enemyHasNoColonies && !v.enemyHasNoMines) continue;
-    const enemy = otherFaction(faction);
     const has = (improvement: 'colony' | 'mine') => state.planets.some((p) => p.owner === enemy && p.improvement === improvement);
-    if (v.enemyHasNoShips && state.ships.some((s) => s.owner === enemy)) continue;
+    if (v.enemyHasNoShips && enemyHasShips) continue;
     if (v.enemyHasNoColonies && has('colony')) continue;
     if (v.enemyHasNoMines && has('mine')) continue;
     return faction;
