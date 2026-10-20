@@ -128,15 +128,19 @@ export function generateGalaxy(scenario: ScenarioConfig, humanFaction: Faction, 
     }
   }
 
-  // Place the starbase and ships. A ship alone at a world nobody has improved claims it.
+  // Place the starbase and ships. SC1 marks a world claimed when a ship starts alone at it and
+  // nobody has improved it, and later placements use those claims. A claim only steers placement
+  // here: a planet is owned once it has a colony, mine, fortification or starbase.
   const ships: Ship[] = [];
-  // Returns the star and whether this side already owned it. SC1 rerolls picks the enemy owns.
+  const claimedBy = new Map<Planet, Faction>();
+  for (const p of walk.hierarchy) if (p.owner !== 'neutral') claimedBy.set(p, p.owner);
+  // Returns the star and whether this side had already claimed it. SC1 rerolls picks the enemy claims.
   const place = (faction: Faction, base: number, range: number): [Planet, boolean] => {
-    const options = walk[faction].slice(base, base + Math.max(range, 1)).filter((p) => p.owner !== enemyOf(faction));
+    const options = walk[faction].slice(base, base + Math.max(range, 1)).filter((p) => claimedBy.get(p) !== enemyOf(faction));
     const planet = options.length > 0 ? options[roll(options.length)] : walk[faction][0];
-    const wasOwn = planet.owner === faction;
+    const wasOwn = claimedBy.get(planet) === faction;
     const enemyHere = ships.some((s) => s.planetId === planet.id && s.owner !== faction);
-    if (!enemyHere && !planet.improvement) planet.owner = faction;
+    if (!enemyHere && !planet.improvement) claimedBy.set(planet, faction);
     planet.explored = true;
     return [planet, wasOwn];
   };
@@ -149,6 +153,7 @@ export function generateGalaxy(scenario: ScenarioConfig, humanFaction: Faction, 
       // SC1 always puts the starbase on the star farthest from the centre.
       const [planet, wasOwn] = place(faction, 0, 1);
       if (!wasOwn) unowned[faction]--;
+      planet.owner = faction;
       planet.hasStarbase = true;
       planet.starbaseMovesRemaining = 1;
     }
