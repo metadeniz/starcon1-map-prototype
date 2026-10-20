@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateGalaxy, worldTotal } from '../src/generation/galaxyGenerator';
-import { SC1, clusterFieldSize, generateCluster, type ClusterStar } from '../src/generation/sc1Cluster';
+import { SC1, generateCluster, MscRand, type ClusterStar } from '../src/generation/sc1Cluster';
+import { flattenCluster, type FlatPoint } from '../src/generation/flatLayout';
 import { DEFAULT_SCENARIO } from '../src/generation/scenarioConfig';
-import { mulberry32 } from '../src/generation/rng';
 import { LAYOUT } from '../src/generation/layout';
 import { SC1_PRESETS } from '../src/generation/sc1Presets';
 import { sc1ToScenarioConfig } from '../src/generation/sc1Scenario';
@@ -32,55 +32,39 @@ function connectedComponent(start: string, adjacency: Map<string, Set<string>>):
   return visited;
 }
 
-const dist2 = (a: ClusterStar, b: ClusterStar) => (a.along - b.along) ** 2 + (a.across - b.across) ** 2;
+const dist2 = (a: ClusterStar, b: ClusterStar) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2;
+const flatDist = (a: FlatPoint, b: FlatPoint) => Math.hypot(a.along - b.along, a.across - b.across);
 
-const SEEDS = [1, 42, 1337, 99991, 2024];
+const SEEDS = [1, 42, 1337, 9991, 2024];
 
-describe('generateCluster (SC1 rules in 2D)', () => {
+describe('generateCluster (SC1, STARCON.EXE 0628:216C)', () => {
   for (const [countA, countB] of [
     [1, 1],
     [6, 6],
-    [15, 15],
+    [14, 14],
     [25, 25],
   ]) {
     for (const seed of SEEDS) {
       describe(`${countA}+${countB} stars, seed ${seed}`, () => {
-        const cluster = generateCluster(mulberry32(seed), countA, countB);
-        const { stars } = cluster;
+        const stars = generateCluster(new MscRand(seed), countA, countB);
 
-        it('places the requested number of stars on each side', () => {
+        it('places the requested number of stars on each side, each in its own half', () => {
           expect(stars.filter((s) => s.side === 'A').length).toBe(countA);
           expect(stars.filter((s) => s.side === 'B').length).toBe(countB);
-        });
-
-        it('puts the first star at the centre and each side in its own half', () => {
-          expect(stars[0].along).toBe(cluster.centre);
-          expect(stars[0].across).toBe(0);
+          expect(stars[0].x).toBe(SC1.CENTRE);
           for (const s of stars.slice(1)) {
-            if (s.side === 'A') expect(s.along).toBeGreaterThan(cluster.centre);
-            else expect(s.along).toBeLessThan(cluster.centre);
-            expect(Math.abs(s.across)).toBeLessThanOrEqual(cluster.halfWidth);
+            if (s.side === 'A') expect(s.x).toBeGreaterThan(SC1.CENTRE);
+            else expect(s.x).toBeLessThan(SC1.CENTRE);
+            expect(s.y ** 2 + s.z ** 2).toBeLessThanOrEqual(SC1.RADIUS ** 2);
           }
         });
 
         it('links exactly the pairs closer than LINK_MAX, and keeps every pair at least MIN_DIST apart', () => {
           for (let i = 0; i < stars.length; i++) {
             for (let j = i + 1; j < stars.length; j++) {
-              const a = stars[i];
-              const b = stars[j];
-              const d2 = dist2(a, b);
+              const d2 = dist2(stars[i], stars[j]);
               expect(d2).toBeGreaterThanOrEqual(SC1.MIN_DIST ** 2);
-              expect(a.links.includes(b)).toBe(d2 < SC1.LINK_MAX ** 2);
-            }
-          }
-        });
-
-        it('has no near misses: no unlinked pair inside the window closer than GAP_MAX', () => {
-          for (const a of stars) {
-            for (const b of stars) {
-              if (a === b || a.links.includes(b)) continue;
-              const inWindow = Math.abs(a.along - b.along) <= SC1.WINDOW && Math.abs(a.across - b.across) <= SC1.WINDOW;
-              if (inWindow) expect(dist2(a, b)).toBeGreaterThanOrEqual(SC1.GAP_MAX ** 2);
+              expect(stars[i].links.includes(stars[j])).toBe(d2 < SC1.LINK_MAX ** 2);
             }
           }
         });
@@ -96,32 +80,51 @@ describe('generateCluster (SC1 rules in 2D)', () => {
     }
   }
 
-  it('matches SC1’s 3D link stats for a 28-star map (37.8 links, 4.5 dead ends on average)', () => {
+  it('matches the measured SC1 averages for a 28-star map (37.6 links, 4.5 dead ends)', () => {
     let links = 0;
     let deadEnds = 0;
-    const runs = 100;
+    const runs = 200;
     for (let seed = 1; seed <= runs; seed++) {
-      const { stars } = generateCluster(mulberry32(seed), 14, 14);
-      for (const s of stars) {
+      for (const s of generateCluster(new MscRand(seed), 14, 14)) {
         links += s.links.length;
         if (s.links.length === 1) deadEnds++;
       }
     }
-    expect(links / 2 / runs).toBeGreaterThan(35);
-    expect(links / 2 / runs).toBeLessThan(40);
-    expect(deadEnds / runs).toBeGreaterThan(3.5);
-    expect(deadEnds / runs).toBeLessThan(5.5);
-  });
-
-  it('grows the field with the star count', () => {
-    expect(clusterFieldSize(28)).toEqual({ halfLength: 140, halfWidth: 118 });
-    expect(clusterFieldSize(50).halfWidth).toBeGreaterThan(clusterFieldSize(30).halfWidth);
+    expect(links / 2 / runs).toBeGreaterThan(36.5);
+    expect(links / 2 / runs).toBeLessThan(38.7);
+    expect(deadEnds / runs).toBeGreaterThan(4);
+    expect(deadEnds / runs).toBeLessThan(5);
   });
 
   it('rejects counts outside SC1’s 2-50 range', () => {
-    expect(() => generateCluster(mulberry32(1), 1, 0)).toThrow(RangeError);
-    expect(() => generateCluster(mulberry32(1), 26, 25)).toThrow(RangeError);
+    expect(() => generateCluster(new MscRand(1), 1, 0)).toThrow(RangeError);
+    expect(() => generateCluster(new MscRand(1), 26, 25)).toThrow(RangeError);
   });
+});
+
+describe('flattenCluster', () => {
+  for (const [countA, countB] of [
+    [6, 6],
+    [14, 14],
+    [25, 25],
+  ]) {
+    for (const seed of SEEDS.slice(0, 3)) {
+      it(`keeps sides, the centre and SC1-like link lengths for ${countA}+${countB} stars, seed ${seed}`, () => {
+        const stars = generateCluster(new MscRand(seed), countA, countB);
+        const flat = flattenCluster(stars);
+        expect(flat.get(stars[0])).toEqual({ along: 0, across: 0 });
+        for (const s of stars.slice(1)) {
+          if (s.side === 'A') expect(flat.get(s)!.along).toBeGreaterThan(0);
+          else expect(flat.get(s)!.along).toBeLessThan(0);
+          for (const t of s.links) {
+            const d = flatDist(flat.get(s)!, flat.get(t)!);
+            expect(d).toBeGreaterThan(12);
+            expect(d).toBeLessThan(55);
+          }
+        }
+      });
+    }
+  }
 });
 
 const SCENARIOS: ScenarioConfig[] = [DEFAULT_SCENARIO, ...SC1_PRESETS.map(sc1ToScenarioConfig)];
@@ -168,11 +171,11 @@ describe('generateGalaxy', () => {
         });
 
         it('puts a starbase on the far end of each side that has one', () => {
-          const top = bySide.hierarchy[0];
-          const bottom = bySide.alliance[bySide.alliance.length - 1];
-          for (const [faction, end] of [['hierarchy', top], ['alliance', bottom]] as const) {
+          // Planets are listed in SC1's x order, from the Hierarchy's far end to the Alliance's.
+          const ends = { hierarchy: state.planets[0], alliance: state.planets[state.planets.length - 1] };
+          for (const faction of FACTIONS) {
             const bases = state.planets.filter((p) => p.hasStarbase && p.owner === faction);
-            expect(bases).toEqual(scenario.sides[faction].starbase ? [end] : []);
+            expect(bases).toEqual(scenario.sides[faction].starbase ? [ends[faction]] : []);
           }
         });
 
