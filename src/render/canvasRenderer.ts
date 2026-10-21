@@ -17,8 +17,7 @@ const TYPE_COLORS: Record<PlanetType, string> = {
   dead: '#6b7280',
 };
 
-// Grey rather than blue, so unexplored planets don't read as the Hierarchy's.
-const UNEXPLORED_COLOR = '#6b7385';
+const UNEXPLORED_COLOR = '#2f6fb8';
 
 // SC1's planet markers (setup.pkg package 16, type 3, instance 4) are 5x5 one-colour glyphs: a
 // diamond for a colony, a plus for a mine and a square for a fortification. Here they are drawn as
