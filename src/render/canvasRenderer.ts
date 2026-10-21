@@ -3,9 +3,9 @@ import { LAYOUT } from '../generation/layout';
 import type { ReachablePlanet } from '../game/gameState';
 import { drawMapIcon, iconRadius, starbaseIconKey } from './shipIcons';
 
-const PLANET_RADIUS = 14;
+const PLANET_RADIUS = 7;
 /** Distance from a planet's centre to the ring its starbase and ships sit on. */
-const RING_DISTANCE = PLANET_RADIUS + 16;
+const RING_DISTANCE = PLANET_RADIUS + 20;
 const SHIP_HIT_RADIUS = 12;
 
 const TYPE_COLORS: Record<PlanetType, string> = {
@@ -25,7 +25,7 @@ const MARKER_GLYPHS = {
   fortified: ['#####', '#...#', '#...#', '#...#', '#####'],
 };
 // Drawn about as wide as a planet circle.
-const MARKER_SCALE = 6;
+const MARKER_SCALE = 3;
 const MAP_BACKGROUND = '#05070d';
 // SC1's own marker colours (palette entries the exe picks at linear 0x412E): yellow for the
 // Alliance and blue for the Hierarchy, with the fortification square a lighter shade.
@@ -130,7 +130,7 @@ export function shipAt(screenX: number, screenY: number, state: GameState, view:
 
 export function planetAt(screenX: number, screenY: number, state: GameState, view: ViewTransform): Planet | undefined {
   const logical = toLogical(screenX, screenY, view);
-  const hitRadius = (PLANET_RADIUS + 6) / view.scale;
+  const hitRadius = (PLANET_RADIUS + 8) / view.scale;
   let closest: Planet | undefined;
   let closestDist = Infinity;
   for (const p of state.planets) {
@@ -177,7 +177,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
       if (!p) continue;
       const s = toScreen(p.x, p.y, view);
       ctx.beginPath();
-      ctx.arc(s.x, s.y, PLANET_RADIUS + 7, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, PLANET_RADIUS + 6, 0, Math.PI * 2);
       ctx.strokeStyle = '#f4d35e';
       ctx.lineWidth = 2;
       ctx.stroke();
@@ -203,7 +203,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
       if (selected) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
-        ctx.strokeRect(Math.round(s.x - half) - 4, Math.round(s.y - half) - 4, 5 * MARKER_SCALE + 8, 5 * MARKER_SCALE + 8);
+        ctx.strokeRect(Math.round(s.x - half) - 3, Math.round(s.y - half) - 3, 5 * MARKER_SCALE + 6, 5 * MARKER_SCALE + 6);
       }
       continue;
     }
@@ -212,9 +212,13 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
     ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;
     ctx.fill();
-    ctx.lineWidth = selected ? 4 : 2.5;
-    ctx.strokeStyle = OWNER_COLORS[p.owner];
-    ctx.stroke();
+    if (selected) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, PLANET_RADIUS + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
   }
 
   // Starbases and ships: SC1's own map icons, arranged around their planet
