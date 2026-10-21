@@ -115,6 +115,35 @@ describe('moveShip', () => {
     expect(state.planets.find((p) => p.id === 'D')!.explored).toBe(false);
   });
 
+  it('costs nothing when leaving a world with the side\'s own colony', () => {
+    const state = makeState();
+    Object.assign(state.planets.find((p) => p.id === 'B')!, { owner: 'alliance', improvement: 'colony' });
+    moveShip(state.ships[0], 'B', state);
+    expect(state.actionsRemaining).toBe(2);
+    moveShip(state.ships[0], 'C', state);
+    expect(state.actionsRemaining).toBe(2);
+    moveShip(state.ships[0], 'B', state);
+    moveShip(state.ships[0], 'M', state);
+    expect(state.actionsRemaining).toBe(1);
+  });
+
+  it('charges for leaving an enemy colony or an own mine', () => {
+    const state = makeState();
+    Object.assign(state.planets.find((p) => p.id === 'B')!, { owner: 'hierarchy', improvement: 'colony' });
+    Object.assign(state.planets.find((p) => p.id === 'C')!, { owner: 'alliance', improvement: 'mine' });
+    moveShip(state.ships[0], 'B', state);
+    moveShip(state.ships[0], 'C', state);
+    moveShip(state.ships[0], 'D', state);
+    expect(state.actionsRemaining).toBe(0);
+  });
+
+  it('still needs an action left to make a free move', () => {
+    const state = makeState();
+    Object.assign(state.planets.find((p) => p.id === 'A')!, { improvement: 'colony' });
+    state.actionsRemaining = 0;
+    expect(() => moveShip(state.ships[0], 'B', state)).toThrow();
+  });
+
   it('shares the action budget between ships', () => {
     const state = makeState();
     state.ships.push(makeShip({ id: 's2', planetId: 'A' }));

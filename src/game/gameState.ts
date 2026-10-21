@@ -23,15 +23,25 @@ export interface ReachablePlanet {
 }
 
 /**
+ * Actions a move from `planetId` costs `owner`. As in SC1 (STARCON.EXE 02D7:072A), leaving a
+ * world where the side has a colony is free; any other move is one action.
+ */
+export function moveCost(planetId: string, owner: Faction, state: GameState): number {
+  const planet = state.planets.find((p) => p.id === planetId);
+  return planet?.improvement === 'colony' && planet.owner === owner ? 0 : 1;
+}
+
+/**
  * Planets the ship can move to right now: those one connection away, while its side has an
- * action left. Ships move one connection per action; a longer trip takes several moves.
+ * action left. Ships move one connection per move; a longer trip takes several moves.
  */
 export function reachablePlanets(ship: Ship, state: GameState): Map<string, ReachablePlanet> {
   const result = new Map<string, ReachablePlanet>();
   if (ship.owner !== state.currentFaction || state.actionsRemaining <= 0) return result;
   const adjacency = buildAdjacency(state.planets, state.connections);
+  const cost = moveCost(ship.planetId, ship.owner, state);
   for (const neighbor of adjacency.get(ship.planetId) ?? []) {
-    result.set(neighbor, { planetId: neighbor, cost: 1, path: [ship.planetId, neighbor] });
+    result.set(neighbor, { planetId: neighbor, cost, path: [ship.planetId, neighbor] });
   }
   return result;
 }
@@ -63,8 +73,8 @@ function spendActions(state: GameState, cost: number): void {
 }
 
 /**
- * Moves a ship one connection to `destinationPlanetId`, for one of the side's actions. A ship
- * may move several times a turn as long as the side has actions left.
+ * Moves a ship one connection to `destinationPlanetId`, for one of the side's actions (none when
+ * leaving its own colony). A ship may move several times a turn while the side has actions left.
  */
 export function moveShip(ship: Ship, destinationPlanetId: string, state: GameState): void {
   if (ship.owner !== state.currentFaction) {
