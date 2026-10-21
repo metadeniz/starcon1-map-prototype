@@ -162,25 +162,20 @@ export function planetAt(screenX: number, screenY: number, state: GameState, vie
 
 const connectionKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
-/**
- * The connections a move can travel along: every link that steps one move further out from the
- * starting planet, between two planets in range. Equally short alternative routes all light up.
- */
+/** The connections leading one step out from the selected ship's or starbase's planet. */
 export function litConnectionKeys(
   connections: { a: string; b: string }[],
   reachable: Map<string, ReachablePlanet> | undefined,
 ): Set<string> {
   const lit = new Set<string>();
   if (!reachable) return lit;
-  const costs = new Map<string, number>();
+  const steps = new Set<string>();
   for (const r of reachable.values()) {
-    costs.set(r.planetId, r.cost);
-    if (r.path.length) costs.set(r.path[0], 0);
+    if (r.path.length >= 2) steps.add(connectionKey(r.path[0], r.path[1]));
   }
   for (const c of connections) {
-    const ca = costs.get(c.a);
-    const cb = costs.get(c.b);
-    if (ca !== undefined && cb !== undefined && Math.abs(ca - cb) === 1) lit.add(connectionKey(c.a, c.b));
+    const key = connectionKey(c.a, c.b);
+    if (steps.has(key)) lit.add(key);
   }
   return lit;
 }

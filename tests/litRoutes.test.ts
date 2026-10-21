@@ -20,12 +20,12 @@ describe('litConnectionKeys', () => {
     expect(litConnectionKeys(connections, undefined).size).toBe(0);
   });
 
-  it('lights every route that steps one move further out, including equal alternatives', () => {
+  it('lights only the routes one step out from the starting planet', () => {
     const reachable = reach([
       ['B', 1, ['A', 'B']],
       ['C', 1, ['A', 'C']],
       ['D', 2, ['A', 'B', 'D']],
     ]);
-    expect([...litConnectionKeys(connections, reachable)].sort()).toEqual(['A|B', 'A|C', 'B|D', 'C|D']);
+    expect([...litConnectionKeys(connections, reachable)].sort()).toEqual(['A|B', 'A|C']);
   });
 });
