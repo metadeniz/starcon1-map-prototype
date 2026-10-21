@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseSc1Scenario, sc1ToScenarioConfig, ScenarioFileError, SC1_SCENARIO_SIZE } from '../src/generation/sc1Scenario';
+import { parseSc1Scenario, sc1ToScenarioConfig, scenarioConfigToSc1, ScenarioFileError, SC1_SCENARIO_SIZE, writeSc1Scenario } from '../src/generation/sc1Scenario';
+import { defaultCustomScenario } from '../src/generation/scenarioBuilder';
 import { SC1_PRESETS } from '../src/generation/sc1Presets';
 import { winner, buildShip, InvalidActionError } from '../src/game/gameState';
 import { generateGalaxy } from '../src/generation/galaxyGenerator';
@@ -80,5 +81,51 @@ describe('SC1 presets', () => {
     expect(winner(state)).toBeNull();
     state.ships = state.ships.filter((s) => s.owner !== 'alliance'); // the lone Syreen is lost
     expect(winner(state)).toBe('hierarchy');
+  });
+});
+
+describe('writeSc1Scenario', () => {
+  it('writes every built-in scenario back to the same settings', () => {
+    for (const preset of SC1_PRESETS) {
+      const bytes = writeSc1Scenario(scenarioConfigToSc1(sc1ToScenarioConfig(preset), preset.file));
+      expect(bytes).toHaveLength(SC1_SCENARIO_SIZE);
+      const back = parseSc1Scenario(bytes, preset.file);
+      expect(back.alliance).toEqual(preset.alliance);
+      expect(back.hierarchy).toEqual(preset.hierarchy);
+      expect(back.title).toBe(preset.title);
+      expect(back.menuLine).toBe(preset.menuLine);
+    }
+  });
+
+  it('writes the made-up file byte for byte up to the description', () => {
+    // The parser joins the description's lines, so only the part before it comes back exactly.
+    const file = makeFile();
+    expect(writeSc1Scenario(parseSc1Scenario(file)).subarray(0, 0x80)).toEqual(file.subarray(0, 0x80));
+  });
+
+  it('saves custom settings in SC1 terms', () => {
+    const sc = defaultCustomScenario();
+    sc.title = 'A much too long title';
+    sc.description = 'First line.\nSecond line, café.';
+    sc.firstMove = 'hierarchy';
+    sc.randomEventsOff = true;
+    sc.sides.alliance.ships = [{ role: 'chenjesu-broodhome', zone: 2 }, { role: 'shofixti-scout', zone: 0 }];
+    sc.sides.hierarchy.cannotBuild = ['ur-quan-dreadnought', 'umgah-drone'];
+    sc.sides.hierarchy.victory.enemyHasNoMines = true;
+    sc.sides.alliance.starbucks = 300;
+    const bytes = writeSc1Scenario(scenarioConfigToSc1(sc));
+    expect(String.fromCharCode(...bytes.subarray(0, 16))).toBe('A much too long\0');
+    expect(String.fromCharCode(...bytes.subarray(0x80, 0x80 + 31))).toBe('First line.\r\nSecond line, caf?.');
+    const sc1 = parseSc1Scenario(bytes);
+    expect(sc1.alliance.ships).toEqual([1, 7, 0, 0, 0, 0, 0]);
+    expect(sc1.alliance.zones).toEqual([2, 0, 0, 0, 0, 0, 0]);
+    expect(sc1.alliance.flags).toBe(0x18);
+    expect(sc1.alliance.starbucks).toBe(300);
+    expect(sc1.hierarchy.noBuild).toBe(0b1000001);
+    expect(sc1.hierarchy.flags).toBe(0x04);
+    const back = sc1ToScenarioConfig(sc1);
+    expect(back.sides).toEqual(sc.sides);
+    expect(back.firstMove).toBe('hierarchy');
+    expect(back.randomEventsOff).toBe(true);
   });
 });

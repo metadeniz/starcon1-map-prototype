@@ -254,6 +254,27 @@
       .custom-table input:invalid {
         border-color: #ff8a8a;
       }
+      .custom-table input[type='text'],
+      .custom-table textarea {
+        width: 100%;
+        box-sizing: border-box;
+        background: #1c2942;
+        color: #d7dde8;
+        border: 1px solid #35507a;
+        border-radius: 4px;
+        padding: 3px 4px;
+        font: inherit;
+      }
+      .save-note {
+        font-size: 11px;
+        color: #8892a6;
+        margin-top: 4px;
+        text-align: center;
+      }
+      .custom-actions button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
       .custom-actions {
         margin-top: 10px;
         text-align: center;

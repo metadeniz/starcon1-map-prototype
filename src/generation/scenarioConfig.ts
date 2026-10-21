@@ -9,7 +9,7 @@ function side(ships: string[]): SideSetup {
     worlds: { dead: 6, mineral: 5, life: 4, colony: 0, fortifiedColony: 0, mine: 0, fortifiedMine: 0 },
     starbucks: 25,
     cannotBuild: [],
-    victory: NO_VICTORY,
+    victory: { ...NO_VICTORY },
   };
 }
 

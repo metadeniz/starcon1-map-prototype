@@ -25,6 +25,8 @@ const VICTORY_ROWS = [
 
 const numberInput = (field: string, value: number, max: number) =>
   `<input type="number" data-field="${field}" value="${value}" min="0" max="${max}" step="1" />`;
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const checkbox = (field: string, checked: boolean) => `<input type="checkbox" data-field="${field}"${checked ? ' checked' : ''} />`;
 
 /** The custom settings form. Every input names the setting it edits in data-field. */
@@ -52,25 +54,46 @@ export function renderCustomForm(sc: ScenarioConfig): string {
   }).join('');
   const firstMove = sc.firstMove ?? 'human';
   const option = (value: string, text: string) => `<option value="${value}"${firstMove === value ? ' selected' : ''}>${text}</option>`;
+  const text = (field: 'title' | 'menuLine', label: string, max: number) =>
+    `<tr><td>${label}</td><td><input type="text" data-field="${field}" maxlength="${max}" value="${escapeHtml(sc[field] ?? '')}" /></td></tr>`;
   return `
+    <table class="custom-table">
+      ${text('title', 'Title', 15)}
+      ${text('menuLine', 'Menu line', 59)}
+      <tr><td>Description</td><td><textarea data-field="description" maxlength="839" rows="3">${escapeHtml(sc.description ?? '')}</textarea></td></tr>
+    </table>
     <table class="custom-table">${head}${sideRows}</table>
     ${shipTables}
     <table class="custom-table">
       <tr><td>Moves first</td><td><select data-field="firstMove">${option('human', 'You')}${option('hierarchy', 'Hierarchy')}${option('alliance', 'Alliance')}</select></td></tr>
       <tr><td>Moves per ship per turn</td><td>${numberInput('movesPerTurn', sc.movesPerTurn, 9)}</td></tr>
       <tr><td>Starbucks per mine per turn</td><td>${numberInput('mineIncomePerTurn', sc.mineIncomePerTurn, 99)}</td></tr>
+      <tr><td>Random events off (DOS game only)</td><td>${checkbox('randomEventsOff', sc.randomEventsOff ?? false)}</td></tr>
     </table>
-    <div class="custom-actions"><button data-action="reset-custom">Reset to defaults</button></div>
+    <div class="custom-actions">
+      <button data-action="reset-custom">Reset to defaults</button>
+      <select id="save-slot" aria-label="Scenario slot">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<option value="${n}">SCENARIO.${n}</option>`).join('')}</select>
+      <button data-action="save-custom">Save as SCENARIO file</button>
+    </div>
+    <div class="save-note">The file is for Star Control 1 on DOS. Moves per turn and mine income aren't part of it, and "You" moving first is saved as the Alliance moving first.</div>
     <div id="custom-problems"></div>`;
 }
 
 /** Writes one edited input back into the scenario. */
-export function applyCustomInput(sc: ScenarioConfig, input: HTMLInputElement | HTMLSelectElement): void {
+export function applyCustomInput(sc: ScenarioConfig, input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void {
   const field = input.dataset.field;
   if (!field) return;
   const value = input instanceof HTMLInputElement && input.type === 'checkbox' ? input.checked : input.value;
   const num = () => (input.value.trim() === '' ? NaN : Number(input.value));
   const [first, key, sub] = field.split('.');
+  if (first === 'title' || first === 'menuLine' || first === 'description') {
+    sc[first] = input.value;
+    return;
+  }
+  if (first === 'randomEventsOff') {
+    sc.randomEventsOff = value as boolean;
+    return;
+  }
   if (first === 'firstMove') {
     sc.firstMove = value === 'human' ? undefined : (value as Faction);
     return;

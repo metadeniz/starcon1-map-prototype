@@ -35,6 +35,7 @@ export interface Sc1Scenario {
 }
 
 const FLAG_HIERARCHY_FIRST = 0x08;
+const FLAG_RANDOM_EVENTS_OFF = 0x10;
 
 export class ScenarioFileError extends Error {}
 
@@ -109,5 +110,82 @@ export function sc1ToScenarioConfig(sc1: Sc1Scenario): ScenarioConfig {
     firstMove: sc1.alliance.flags & FLAG_HIERARCHY_FIRST ? 'hierarchy' : 'alliance',
     movesPerTurn: 3,
     mineIncomePerTurn: 3,
+    randomEventsOff: (sc1.alliance.flags & FLAG_RANDOM_EVENTS_OFF) !== 0,
   };
+}
+
+/** SC1 numbers each roster from its most expensive ship (1) to its cheapest (7). */
+function indexFor(faction: Faction, role: string): number {
+  const rank = SHIP_ROSTER[faction].findIndex((def) => def.role === role);
+  if (rank < 0) throw new ScenarioFileError(`Unknown ship "${role}"`);
+  return SHIP_ROSTER[faction].length - rank;
+}
+
+function toBlock(faction: Faction, side: SideSetup, extraFlags: number): Sc1SideBlock {
+  if (side.ships.length > 7) throw new ScenarioFileError('An SC1 scenario holds at most 7 starting ships a side');
+  const pad = (values: number[]) => [...values, 0, 0, 0, 0, 0, 0, 0].slice(0, 7);
+  const w = side.worlds;
+  return {
+    starbase: side.starbase,
+    ships: pad(side.ships.map((ship) => indexFor(faction, ship.role))),
+    zones: pad(side.ships.map((ship) => ship.zone)),
+    flags:
+      (side.victory.enemyHasNoShips ? 0x01 : 0) |
+      (side.victory.enemyHasNoColonies ? 0x02 : 0) |
+      (side.victory.enemyHasNoMines ? 0x04 : 0) |
+      extraFlags,
+    starbucks: side.starbucks,
+    noBuild: side.cannotBuild.reduce((bits, role) => bits | (1 << (indexFor(faction, role) - 1)), 0),
+    worlds: [w.dead, w.mineral, w.life, w.colony, w.fortifiedColony, w.mine, w.fortifiedMine],
+  };
+}
+
+/**
+ * The SC1 file for a scenario. SC1 has no "the human moves first", so that becomes the
+ * Alliance moving first; moves per turn and mine income are the prototype's own and aren't saved.
+ */
+export function scenarioConfigToSc1(config: ScenarioConfig, file = 'SCENARIO'): Sc1Scenario {
+  const allianceFlags =
+    (config.firstMove === 'hierarchy' ? FLAG_HIERARCHY_FIRST : 0) | (config.randomEventsOff ? FLAG_RANDOM_EVENTS_OFF : 0);
+  return {
+    file,
+    title: config.title,
+    menuLine: config.menuLine ?? '',
+    description: config.description ?? '',
+    alliance: toBlock('alliance', config.sides.alliance, allianceFlags),
+    hierarchy: toBlock('hierarchy', config.sides.hierarchy, 0),
+  };
+}
+
+/** Text as SC1 stores it: plain ASCII, cut to fit with room for the closing NUL. */
+function writeText(bytes: Uint8Array, offset: number, length: number, text: string): void {
+  const ascii = text.replace(/\r?\n/g, '\r\n').replace(/[^\x20-\x7e\r\n]/g, '?');
+  for (let i = 0; i < Math.min(ascii.length, length - 1); i++) bytes[offset + i] = ascii.charCodeAt(i);
+}
+
+function writeBlock(bytes: Uint8Array, offset: number, block: Sc1SideBlock): void {
+  bytes.set(
+    [
+      block.starbase ? 1 : 0,
+      ...block.ships,
+      ...block.zones,
+      block.flags,
+      block.starbucks & 0xff,
+      block.starbucks >> 8,
+      block.noBuild,
+      ...block.worlds,
+    ],
+    offset,
+  );
+}
+
+/** The 968 bytes of an SC1 SCENARIO file. */
+export function writeSc1Scenario(sc1: Sc1Scenario): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(SC1_SCENARIO_SIZE);
+  writeText(bytes, 0x000, 16, sc1.title);
+  writeText(bytes, 0x010, 60, sc1.menuLine);
+  writeBlock(bytes, 0x04c, sc1.alliance);
+  writeBlock(bytes, 0x066, sc1.hierarchy);
+  writeText(bytes, 0x080, 840, sc1.description);
+  return bytes;
 }
