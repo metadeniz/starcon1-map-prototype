@@ -202,7 +202,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
     const fortified = p.fortified || p.improvement === 'fortification';
     const marked = p.explored && (fortified || p.improvement !== undefined);
 
-    if (!(p.explored && drawPlanetSprite(ctx, p.type, p.id, s.x, s.y, PLANET_RADIUS))) {
+    if (!(p.explored && drawPlanetSprite(ctx, p.type, s.x, s.y, PLANET_RADIUS))) {
       ctx.beginPath();
       ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
       ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;

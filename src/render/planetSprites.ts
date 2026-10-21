@@ -1,14 +1,13 @@
-// Painted planet images for explored worlds, one row per type with a few variants each
-// (planet-types-v9 sheet, cut into 48x48 tiles in planetTypes.png).
+// Pixel-art planet images for explored worlds, one per type, cut from D's planet preview sheet
+// at native size into planetTypes.png. They are about 28px tall, a planet circle's diameter.
 
 import type { PlanetType } from '../model/types';
 
-const TILE = 48;
-// Index of each type's first tile in the atlas, and how many variants it has.
-const VARIANTS: Record<PlanetType, { first: number; count: number }> = {
-  life: { first: 0, count: 6 },
-  mineral: { first: 6, count: 6 },
-  dead: { first: 12, count: 3 },
+// x, y, w, h: each type's rectangle in planetTypes.png.
+const FRAMES: Record<PlanetType, { x: number; y: number; w: number; h: number }> = {
+  life: { x: 0, y: 0, w: 32, h: 27 },
+  mineral: { x: 33, y: 0, w: 33, h: 28 },
+  dead: { x: 67, y: 0, w: 32, h: 27 },
 };
 
 const atlas: HTMLImageElement | undefined =
@@ -21,25 +20,26 @@ export function whenPlanetSpritesLoaded(callback: () => void): void {
   else atlas.addEventListener('load', callback, { once: true });
 }
 
-/** Picks a variant from the planet id, so a planet keeps the same look all game. */
-function variantFor(planetId: string, count: number): number {
-  let h = 0;
-  for (let i = 0; i < planetId.length; i++) h = (h * 31 + planetId.charCodeAt(i)) >>> 0;
-  return h % count;
-}
-
-/** Draws the planet's image centred on (cx, cy). Returns false if the atlas isn't ready yet. */
+/**
+ * Draws the planet's image centred on (cx, cy), scaled so it is `radius * 2` tall. Returns false
+ * if the atlas isn't ready yet.
+ */
 export function drawPlanetSprite(
   ctx: CanvasRenderingContext2D,
   type: PlanetType,
-  planetId: string,
   cx: number,
   cy: number,
   radius: number,
 ): boolean {
   if (!atlas || !atlas.complete || atlas.naturalWidth === 0) return false;
-  const { first, count } = VARIANTS[type];
-  const tile = first + variantFor(planetId, count);
-  ctx.drawImage(atlas, tile * TILE, 0, TILE, TILE, cx - radius, cy - radius, radius * 2, radius * 2);
+  const frame = FRAMES[type];
+  const scale = (radius * 2) / 28;
+  const w = Math.round(frame.w * scale);
+  const h = Math.round(frame.h * scale);
+  // Round to whole pixels so the pixel art stays crisp.
+  const smoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(atlas, frame.x, frame.y, frame.w, frame.h, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
+  ctx.imageSmoothingEnabled = smoothing;
   return true;
 }
