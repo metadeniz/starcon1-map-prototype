@@ -13,6 +13,9 @@ import { defaultCustomScenario, randomTypicalScenario, scenarioProblems } from '
 import { applyCustomInput, renderCustomForm } from './ui/customScenarioForm';
 import { shipTypeName } from './model/shipRoster';
 import { runAiTurn } from './game/ai';
+import { followMouseSelection, handleGameKey, newKeyboardUi, resetKeyboardUi, syncKeyboardUi } from './ui/keyboardControl';
+import { renderCommandMenu } from './render/commandMenu';
+import { playMenuSound, preloadMenuSounds } from './ui/sounds';
 import type { Faction, GameState, ImprovementType, ScenarioConfig, SideSetup } from './model/types';
 import type { ShipRole } from './model/shipRoster';
 
@@ -37,6 +40,7 @@ const scenarioFileInput = document.getElementById('scenario-file') as HTMLInputE
 const scenarioInfo = document.getElementById('scenario-info')!;
 const scenarioError = document.getElementById('scenario-error')!;
 const scenarioBar = document.getElementById('scenario-bar')!;
+const commandMenu = document.getElementById('command-menu')!;
 
 // The first two entries are rebuilt in place: a fresh roll of a typical game, and the custom settings.
 const TYPICAL = 0;
@@ -146,6 +150,9 @@ async function loadScenarioFiles(files: FileList | File[]): Promise<void> {
 
 let state: GameState | null = null;
 const selection: Selection = {};
+const keyboard = newKeyboardUi();
+// The keyboard shows routes only once MOVE is chosen, as in SC1; a ship picked with the mouse shows them at once.
+let mouseRoutes = false;
 let view: ViewTransform = { scale: 1, offsetX: 0, offsetY: 0 };
 
 function draw(): void {
@@ -153,8 +160,13 @@ function draw(): void {
   render(ctx, state, view, {
     selectedPlanetId: selection.selectedPlanetId,
     selectedShipId: selection.selectedShipId,
-    reachable: selection.reachable,
+    reachable: keyboard.mode === 'destination' || mouseRoutes ? selection.reachable : undefined,
+    cursorShipId: keyboard.mode !== 'destination' && keyboard.unit?.kind === 'ship' ? keyboard.unit.shipId : undefined,
+    cursorStarbasePlanetId: keyboard.unit?.kind === 'starbase' ? keyboard.unit.planetId : undefined,
+    targetPlanetId: keyboard.mode === 'destination' ? keyboard.destinationId : undefined,
   });
+  renderCommandMenu(commandMenu, state, keyboard, selection.reachable);
+  endTurnBtn.classList.toggle('highlighted', keyboard.mode === 'unit' && keyboard.unit?.kind === 'end-turn');
   renderInfoPanel(infoPanel, state, selection.selectedPlanetId, selection.selectedShipId, selection.movingStarbaseFromPlanetId);
   const won = winner(state);
   turnLabel.textContent = won
@@ -194,6 +206,8 @@ function startGame(humanFaction: Faction): void {
   selection.movingStarbaseFromPlanetId = undefined;
   selection.reachable = undefined;
   playAiTurnsUntilHuman();
+  resetKeyboardUi(keyboard, state, selection);
+  mouseRoutes = false;
   factionPicker.classList.add('hidden');
   resize();
 }
@@ -204,6 +218,8 @@ canvas.addEventListener('click', (event) => {
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
   handleCanvasClick(x, y, state, view, selection);
+  followMouseSelection(keyboard, selection);
+  mouseRoutes = true;
   draw();
 });
 
@@ -218,9 +234,12 @@ infoPanel.addEventListener('click', (event) => {
     if (action === 'select-ship') {
       const shipId = target.dataset.ship;
       if (shipId) selectShip(shipId, state, selection);
+      followMouseSelection(keyboard, selection);
+      mouseRoutes = true;
     } else if (action === 'move-starbase') {
       const planetId = target.dataset.planet;
       if (planetId) startMovingStarbase(planetId, state, selection);
+      mouseRoutes = true;
     } else if (action === 'start-construction') {
       const shipId = target.dataset.ship;
       const type = target.dataset.type as ImprovementType;
@@ -238,14 +257,47 @@ infoPanel.addEventListener('click', (event) => {
       throw err;
     }
   }
+  // A ship built or lost changes the units the highlighter can visit.
+  if (keyboard.mode !== 'unit' || action === 'build-ship') syncKeyboardUi(keyboard, state, selection);
   draw();
 });
 
-endTurnBtn.addEventListener('click', () => {
+function finishTurn(): void {
   if (!state || winner(state)) return;
   endTurn(state);
   playAiTurnsUntilHuman();
   refreshAfterEndTurn(state, selection);
+  resetKeyboardUi(keyboard, state, selection);
+  mouseRoutes = false;
+  draw();
+}
+
+endTurnBtn.addEventListener('click', finishTurn);
+
+// Once the game begins the keyboard drives it, as in SC1: arrows move, Enter selects, Space backs out.
+window.addEventListener('keydown', (event) => {
+  if (!state || winner(state) || !factionPicker.classList.contains('hidden')) return;
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+  const result = handleGameKey(event.key, state, selection, keyboard);
+  if (!result.handled) return;
+  event.preventDefault();
+  // Otherwise Enter or Space would also press whichever button was last clicked.
+  (document.activeElement as HTMLElement | null)?.blur();
+  mouseRoutes = false;
+  if (result.sound) playMenuSound(result.sound);
+  if (result.endTurn) finishTurn();
+  else draw();
+});
+preloadMenuSounds();
+
+// The command menu can be clicked too: a click on an entry highlights it and selects it.
+commandMenu.addEventListener('click', (event) => {
+  if (!state) return;
+  const index = (event.target as HTMLElement).closest<HTMLElement>('[data-menu-index]')?.dataset.menuIndex;
+  if (index === undefined) return;
+  keyboard.menuIndex = Number(index);
+  const result = handleGameKey('Enter', state, selection, keyboard);
+  if (result.sound) playMenuSound(result.sound);
   draw();
 });
 

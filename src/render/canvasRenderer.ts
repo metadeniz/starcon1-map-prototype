@@ -164,6 +164,30 @@ export interface RenderOptions {
   selectedPlanetId?: string;
   selectedShipId?: string;
   reachable?: Map<string, ReachablePlanet>;
+  /** The keyboard highlighter: a ship, or the starbase at a planet. */
+  cursorShipId?: string;
+  cursorStarbasePlanetId?: string;
+  /** The destination picked with the keyboard, drawn as a light-blue route along its path. */
+  targetPlanetId?: string;
+}
+
+const CURSOR_COLOR = '#f4d35e';
+const TARGET_COLOR = '#7fdcff';
+
+/** SC1-style corner brackets around a highlighted map icon. */
+function drawCursor(ctx: CanvasRenderingContext2D, x: number, y: number, half: number): void {
+  const arm = Math.max(4, half * 0.6);
+  ctx.beginPath();
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const cx = x + sx * half;
+    const cy = y + sy * half;
+    ctx.moveTo(cx - sx * arm, cy);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx, cy - sy * arm);
+  }
+  ctx.strokeStyle = CURSOR_COLOR;
+  ctx.lineWidth = 2;
+  ctx.stroke();
 }
 
 export function render(ctx: CanvasRenderingContext2D, state: GameState, view: ViewTransform, options: RenderOptions = {}): void {
@@ -251,4 +275,28 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
       ctx.stroke();
     }
   }
+
+  // The keyboard's chosen destination: its whole route in light blue, over the other routes.
+  const target = options.targetPlanetId ? options.reachable?.get(options.targetPlanetId) : undefined;
+  if (target) {
+    const points = target.path.map((id) => planetsById.get(id)).filter((p): p is Planet => !!p).map((p) => toScreen(p.x, p.y, view));
+    ctx.beginPath();
+    points.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
+    ctx.strokeStyle = TARGET_COLOR;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    const end = points[points.length - 1];
+    if (end) {
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, PLANET_RADIUS + 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  const cursorPos = options.cursorShipId
+    ? icons.ships.get(options.cursorShipId)
+    : options.cursorStarbasePlanetId
+      ? icons.starbases.get(options.cursorStarbasePlanetId)
+      : undefined;
+  if (cursorPos) drawCursor(ctx, cursorPos.x, cursorPos.y, SHIP_HIT_RADIUS + 2);
 }
