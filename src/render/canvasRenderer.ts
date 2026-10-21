@@ -44,10 +44,15 @@ function drawMarker(ctx: CanvasRenderingContext2D, shape: MarkerShape, cx: numbe
     ctx.lineTo(cx - h, cy);
     ctx.closePath();
   } else if (shape === 'mine') {
-    ctx.moveTo(cx, cy - h);
-    ctx.lineTo(cx, cy + h);
-    ctx.moveTo(cx - h, cy);
-    ctx.lineTo(cx + h, cy);
+    // Centre the lines on pixel centres so they stay sharp (and as bright as the diamond), and run
+    // the arms past a fortification square's outline so they cover it.
+    const x = Math.round(cx) + 0.5;
+    const y = Math.round(cy) + 0.5;
+    const arm = h + MARKER_LINE_WIDTH + 1;
+    ctx.moveTo(x, y - arm);
+    ctx.lineTo(x, y + arm);
+    ctx.moveTo(x - arm, y);
+    ctx.lineTo(x + arm, y);
   } else {
     ctx.rect(cx - h, cy - h, 2 * h, 2 * h);
   }
