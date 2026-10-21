@@ -3,6 +3,7 @@ import { DEFAULT_SCENARIO } from './generation/scenarioConfig';
 import { computeViewTransform, render, type ViewTransform } from './render/canvasRenderer';
 import { renderInfoPanel } from './render/infoPanel';
 import { whenIconsLoaded } from './render/shipIcons';
+import { whenPlanetSpritesLoaded } from './render/planetSprites';
 import { handleCanvasClick, refreshAfterEndTurn, selectShip, startMovingStarbase, type Selection } from './ui/inputHandler';
 import { buildShip, endTurn, InvalidActionError, startConstruction, winner } from './game/gameState';
 import { SC1_PRESETS } from './generation/sc1Presets';
@@ -137,8 +138,9 @@ function draw(): void {
   starbucksBar.textContent = `Alliance: ${state.starbucks.alliance} | Hierarchy: ${state.starbucks.hierarchy} Starbucks`;
 }
 
-// The SC1 map icons load asynchronously; redraw once they arrive.
+// The map images load asynchronously; redraw once they arrive.
 whenIconsLoaded(draw);
+whenPlanetSpritesLoaded(draw);
 
 function resize(): void {
   const rect = mapContainer.getBoundingClientRect();

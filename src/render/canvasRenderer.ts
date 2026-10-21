@@ -2,8 +2,11 @@ import type { GameState, Owner, Planet, PlanetType } from '../model/types';
 import { LAYOUT } from '../generation/layout';
 import type { ReachablePlanet } from '../game/gameState';
 import { drawMapIcon, iconRadius, starbaseIconKey } from './shipIcons';
+import { drawPlanetSprite } from './planetSprites';
 
 const PLANET_RADIUS = 7;
+/** Painted planet images read better a little larger than the plain circles. */
+const PLANET_SPRITE_RADIUS = 9;
 /** Distance from a planet's centre to the ring its starbase and ships sit on. */
 const RING_DISTANCE = PLANET_RADIUS + 20;
 const SHIP_HIT_RADIUS = 12;
@@ -208,13 +211,16 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
       continue;
     }
 
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;
-    ctx.fill();
+    // Explored planets show a painted image of their type; the rest stay plain circles.
+    if (!(p.explored && drawPlanetSprite(ctx, p.type, p.id, s.x, s.y, PLANET_SPRITE_RADIUS))) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;
+      ctx.fill();
+    }
     if (selected) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, PLANET_RADIUS + 3, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, (p.explored ? PLANET_SPRITE_RADIUS : PLANET_RADIUS) + 3, 0, Math.PI * 2);
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
