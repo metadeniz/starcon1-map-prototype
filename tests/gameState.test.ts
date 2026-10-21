@@ -64,12 +64,12 @@ function makeState(): GameState {
 }
 
 describe('reachablePlanets', () => {
-  it('finds planets within the side\'s action budget via BFS', () => {
+  it('lists only planets one connection away', () => {
     const state = makeState();
+    moveShip(state.ships[0], 'B', state);
     const reachable = reachablePlanets(state.ships[0], state);
-    expect(new Set(reachable.keys())).toEqual(new Set(['B', 'C', 'M', 'D']));
-    expect(reachable.get('D')!.cost).toBe(3);
-    expect(reachable.get('D')!.path).toEqual(['A', 'B', 'C', 'D']);
+    expect(new Set(reachable.keys())).toEqual(new Set(['A', 'C', 'M']));
+    expect(reachable.get('C')).toEqual({ planetId: 'C', cost: 1, path: ['B', 'C'] });
   });
 
   it('returns nothing when the side has no actions left', () => {
@@ -80,14 +80,21 @@ describe('reachablePlanets', () => {
 });
 
 describe('moveShip', () => {
-  it('moves along the shortest path and spends one action per jump', () => {
+  it('moves one connection for one action', () => {
     const state = makeState();
-    moveShip(state.ships[0], 'C', state);
-    expect(state.ships[0].planetId).toBe('C');
-    expect(state.actionsRemaining).toBe(1);
+    moveShip(state.ships[0], 'B', state);
+    expect(state.ships[0].planetId).toBe('B');
+    expect(state.actionsRemaining).toBe(2);
   });
 
-  it('lets a ship move more than once a turn, each jump spending an action', () => {
+  it('rejects a move further than one connection', () => {
+    const state = makeState();
+    expect(() => moveShip(state.ships[0], 'C', state)).toThrow();
+    expect(state.ships[0].planetId).toBe('A');
+    expect(state.actionsRemaining).toBe(3);
+  });
+
+  it('lets a ship move more than once a turn, each move spending an action', () => {
     const state = makeState();
     moveShip(state.ships[0], 'B', state);
     moveShip(state.ships[0], 'C', state);
@@ -101,24 +108,19 @@ describe('moveShip', () => {
     const state = makeState();
     for (const p of state.planets) p.explored = false;
     state.planets[0].explored = true; // homeworld
+    moveShip(state.ships[0], 'B', state);
     moveShip(state.ships[0], 'C', state);
     expect(state.planets.find((p) => p.id === 'B')!.explored).toBe(true);
     expect(state.planets.find((p) => p.id === 'C')!.explored).toBe(true);
     expect(state.planets.find((p) => p.id === 'D')!.explored).toBe(false);
   });
 
-  it('throws if the destination is beyond the action budget', () => {
-    const state = makeState();
-    state.actionsRemaining = 1;
-    expect(() => moveShip(state.ships[0], 'D', state)).toThrow();
-  });
-
   it('shares the action budget between ships', () => {
     const state = makeState();
     state.ships.push(makeShip({ id: 's2', planetId: 'A' }));
+    moveShip(state.ships[0], 'B', state);
     moveShip(state.ships[0], 'C', state);
     expect(state.ships[1].planetId).toBe('A');
-    expect(new Set(reachablePlanets(state.ships[1], state).keys())).toEqual(new Set(['B']));
     moveShip(state.ships[1], 'B', state);
     expect(reachablePlanets(state.ships[0], state).size).toBe(0);
   });

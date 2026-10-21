@@ -22,32 +22,17 @@ export interface ReachablePlanet {
   path: string[]; // planet ids from the ship's current planet to this one, inclusive of both ends
 }
 
-/** BFS from the ship's current planet, bounded by its side's remaining actions (1 action per jump). */
+/**
+ * Planets the ship can move to right now: those one connection away, while its side has an
+ * action left. Ships move one connection per action; a longer trip takes several moves.
+ */
 export function reachablePlanets(ship: Ship, state: GameState): Map<string, ReachablePlanet> {
-  const adjacency = buildAdjacency(state.planets, state.connections);
   const result = new Map<string, ReachablePlanet>();
-  const budget = ship.owner === state.currentFaction ? state.actionsRemaining : 0;
-  if (budget <= 0) return result;
-
-  const queue: string[] = [ship.planetId];
-  const paths = new Map<string, string[]>([[ship.planetId, [ship.planetId]]]);
-  const costs = new Map<string, number>([[ship.planetId, 0]]);
-
-  while (queue.length) {
-    const current = queue.shift()!;
-    const currentCost = costs.get(current)!;
-    if (currentCost >= budget) continue;
-    for (const neighbor of adjacency.get(current) ?? []) {
-      if (costs.has(neighbor)) continue;
-      const cost = currentCost + 1;
-      costs.set(neighbor, cost);
-      const path = [...paths.get(current)!, neighbor];
-      paths.set(neighbor, path);
-      result.set(neighbor, { planetId: neighbor, cost, path });
-      queue.push(neighbor);
-    }
+  if (ship.owner !== state.currentFaction || state.actionsRemaining <= 0) return result;
+  const adjacency = buildAdjacency(state.planets, state.connections);
+  for (const neighbor of adjacency.get(ship.planetId) ?? []) {
+    result.set(neighbor, { planetId: neighbor, cost: 1, path: [ship.planetId, neighbor] });
   }
-
   return result;
 }
 
@@ -78,7 +63,7 @@ function spendActions(state: GameState, cost: number): void {
 }
 
 /**
- * Moves a ship to `destinationPlanetId`. Each jump costs one of the side's actions, so a ship
+ * Moves a ship one connection to `destinationPlanetId`, for one of the side's actions. A ship
  * may move several times a turn as long as the side has actions left.
  */
 export function moveShip(ship: Ship, destinationPlanetId: string, state: GameState): void {
@@ -91,7 +76,7 @@ export function moveShip(ship: Ship, destinationPlanetId: string, state: GameSta
   const reachable = reachablePlanets(ship, state);
   const target = reachable.get(destinationPlanetId);
   if (!target) {
-    throw new InvalidMoveError('Destination is not reachable with the actions left this turn');
+    throw new InvalidMoveError('Ships move one connection at a time, and need an action left this turn');
   }
   spendActions(state, target.cost);
   const originPlanetId = ship.planetId;
