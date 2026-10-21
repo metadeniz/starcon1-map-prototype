@@ -45,7 +45,8 @@
         align-items: center;
         justify-content: space-between;
       }
-      button {
+      button,
+      .file-btn {
         background: #1c2942;
         color: #d7dde8;
         border: 1px solid #35507a;
@@ -54,7 +55,8 @@
         cursor: pointer;
         font-size: 13px;
       }
-      button:hover {
+      button:hover,
+      .file-btn:hover {
         background: #263a5e;
       }
       #info-panel {
@@ -202,6 +204,26 @@
         color: #8892a6;
         white-space: nowrap;
       }
+      /* The file input sits inside its label, so clicking the label opens the browser's own file
+         dialog. Some browsers and embedded previews ignore a script calling input.click(). */
+      .file-btn {
+        display: inline-block;
+        line-height: normal;
+      }
+      .file-btn input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .file-btn:has(input:focus-visible) {
+        outline: 2px solid #4d7bc4;
+      }
+      #faction-picker.drag-over .picker-card {
+        outline: 2px dashed #8f8fff;
+        outline-offset: 4px;
+      }
       #scenario-error {
         color: #ff8a8a;
         font-size: 12px;
@@ -257,8 +279,9 @@
         </p>
         <div class="scenario-row">
           <select id="scenario-select" aria-label="Scenario"></select>
-          <button id="load-scenario-btn">Load SCENARIO file…</button>
-          <input id="scenario-file" type="file" multiple hidden />
+          <label class="file-btn" title="Or drop SCENARIO files anywhere on this panel"
+            >Load SCENARIO file…<input id="scenario-file" type="file" multiple
+          /></label>
         </div>
         <div id="scenario-error"></div>
         <div id="scenario-info"></div>
