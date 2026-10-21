@@ -9,6 +9,8 @@ import { buildShip, endTurn, InvalidActionError, startConstruction, winner } fro
 import { SC1_PRESETS } from './generation/sc1Presets';
 import { parseSc1Scenario, sc1ToScenarioConfig, ScenarioFileError } from './generation/sc1Scenario';
 import { worldTotal } from './generation/galaxyGenerator';
+import { defaultCustomScenario, randomTypicalScenario, scenarioProblems } from './generation/scenarioBuilder';
+import { applyCustomInput, renderCustomForm } from './ui/customScenarioForm';
 import { shipTypeName } from './model/shipRoster';
 import { runAiTurn } from './game/ai';
 import type { Faction, GameState, ImprovementType, ScenarioConfig, SideSetup } from './model/types';
@@ -36,7 +38,15 @@ const scenarioInfo = document.getElementById('scenario-info')!;
 const scenarioError = document.getElementById('scenario-error')!;
 const scenarioBar = document.getElementById('scenario-bar')!;
 
-const scenarios: ScenarioConfig[] = [DEFAULT_SCENARIO, ...SC1_PRESETS.map(sc1ToScenarioConfig)];
+// The first two entries are rebuilt in place: a fresh roll of a typical game, and the custom settings.
+const TYPICAL = 0;
+const CUSTOM = 1;
+const scenarios: ScenarioConfig[] = [
+  randomTypicalScenario(Math.random),
+  defaultCustomScenario(),
+  DEFAULT_SCENARIO,
+  ...SC1_PRESETS.map(sc1ToScenarioConfig),
+];
 
 const escapeHtml = (text: string) =>
   text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -47,7 +57,7 @@ function selectedScenario(): ScenarioConfig {
 
 function refreshScenarioOptions(selectIndex: number): void {
   scenarioSelect.innerHTML = scenarios
-    .map((sc, i) => `<option value="${i}">${escapeHtml(sc.title)}</option>`)
+    .map((sc, i) => `<option value="${i}">${escapeHtml(sc.title)}${i === CUSTOM ? '…' : ''}</option>`)
     .join('');
   scenarioSelect.value = String(selectIndex);
   renderScenarioInfo();
@@ -90,15 +100,30 @@ function sideSummary(faction: Faction, side: SideSetup): string {
   </td></tr>`;
 }
 
+/** Shows what is wrong with the custom settings, and only lets a game start when nothing is. */
+function refreshScenarioProblems(): void {
+  const problems = scenarioProblems(selectedScenario());
+  const list = document.getElementById('custom-problems');
+  if (list) list.innerHTML = problems.map((p) => `<div>${escapeHtml(p)}</div>`).join('');
+  pickAllianceBtn.disabled = pickHierarchyBtn.disabled = problems.length > 0;
+}
+
 function renderScenarioInfo(): void {
   const sc = selectedScenario();
+  if (Number(scenarioSelect.value) === CUSTOM) {
+    scenarioInfo.innerHTML = renderCustomForm(sc);
+    refreshScenarioProblems();
+    return;
+  }
   const firstMove = sc.firstMove ? `${FACTION_LABEL[sc.firstMove]} moves first.` : 'You move first.';
   scenarioInfo.innerHTML = `
     ${sc.menuLine ? `<div class="menu-line">${escapeHtml(sc.menuLine)}</div>` : ''}
     ${sc.description ? `<p>${escapeHtml(sc.description)}</p>` : ''}
     <table>${sideSummary('hierarchy', sc.sides.hierarchy)}${sideSummary('alliance', sc.sides.alliance)}</table>
     <div>${firstMove}</div>
+    ${Number(scenarioSelect.value) === TYPICAL ? '<div class="custom-actions"><button data-action="reroll">Roll again</button></div>' : ''}
   `;
+  refreshScenarioProblems();
 }
 
 async function loadScenarioFiles(files: FileList | File[]): Promise<void> {
@@ -159,7 +184,9 @@ function playAiTurnsUntilHuman(): void {
 }
 
 function startGame(humanFaction: Faction): void {
-  state = generateGalaxy(selectedScenario(), humanFaction);
+  if (scenarioProblems(selectedScenario()).length > 0) return;
+  // A copy, so editing the custom settings later can't change a game in progress.
+  state = generateGalaxy(structuredClone(selectedScenario()), humanFaction);
   selection.selectedPlanetId = undefined;
   selection.selectedShipId = undefined;
   selection.movingStarbaseFromPlanetId = undefined;
@@ -222,10 +249,28 @@ endTurnBtn.addEventListener('click', () => {
 
 newGameBtn.addEventListener('click', () => {
   state = null;
+  // Each new typical game gets new numbers.
+  scenarios[TYPICAL] = randomTypicalScenario(Math.random);
+  renderScenarioInfo();
   factionPicker.classList.remove('hidden');
 });
 
 scenarioSelect.addEventListener('change', renderScenarioInfo);
+const onCustomEdit = (event: Event) => {
+  const input = event.target as HTMLInputElement | HTMLSelectElement;
+  if (Number(scenarioSelect.value) !== CUSTOM || !input.dataset.field) return;
+  applyCustomInput(scenarios[CUSTOM], input);
+  refreshScenarioProblems();
+};
+scenarioInfo.addEventListener('input', onCustomEdit);
+scenarioInfo.addEventListener('change', onCustomEdit);
+scenarioInfo.addEventListener('click', (event) => {
+  const action = (event.target as HTMLElement).dataset.action;
+  if (action === 'reroll') scenarios[TYPICAL] = randomTypicalScenario(Math.random);
+  else if (action === 'reset-custom') scenarios[CUSTOM] = defaultCustomScenario();
+  else return;
+  renderScenarioInfo();
+});
 scenarioFileInput.addEventListener('change', () => {
   // Copy the list first: clearing the input empties it, and the clear lets the same file be picked again.
   const files = Array.from(scenarioFileInput.files ?? []);
