@@ -2,6 +2,7 @@
 // Ships and '<side>-starbase': the larger icon set (package 4, type 5, instance 1), with the
 // Mmrnmhrm cut down to one form and turned nose-up, as on the in-game map.
 // '<side>-starbase-map': the in-game map starbase (package 16, type 5, instances 16 and 18).
+// '<side>-starbase-sc2': SC2's starbase seen near Earth; the Alliance copy is recoloured blue.
 // x, y, w, h: rectangle in sc1MapIcons.png. scale: how much to enlarge it on the map.
 export const SC1_MAP_ICON_FRAMES: Record<string, { x: number; y: number; w: number; h: number; scale: number }> = {
   'Chenjesu Broodhome': { x: 0, y: 0, w: 20, h: 18, scale: 2 },
@@ -22,4 +23,6 @@ export const SC1_MAP_ICON_FRAMES: Record<string, { x: number; y: number; w: numb
   'hierarchy-starbase': { x: 207, y: 0, w: 21, h: 17, scale: 2 },
   'alliance-starbase-map': { x: 229, y: 0, w: 5, h: 5, scale: 3 },
   'hierarchy-starbase-map': { x: 235, y: 0, w: 5, h: 5, scale: 3 },
+  'alliance-starbase-sc2': { x: 241, y: 0, w: 15, h: 17, scale: 2 },
+  'hierarchy-starbase-sc2': { x: 257, y: 0, w: 15, h: 17, scale: 2 },
 };

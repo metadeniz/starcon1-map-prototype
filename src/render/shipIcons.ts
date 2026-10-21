@@ -1,5 +1,6 @@
-// Star Control 1's own strategic-map icons: one per ship class plus starbases for each side,
-// extracted from the game's setup.pkg into sc1MapIcons.png (see sc1MapIconFrames.ts).
+// Star Control 1's own strategic-map icons, one per ship class, extracted from the game's
+// setup.pkg into sc1MapIcons.png (see sc1MapIconFrames.ts). Starbases use SC2's starbase as seen
+// near Earth, with a blue-and-white copy for the Alliance.
 // Each frame carries its own scale, because SC1 drew them on a 320x200 screen.
 
 import type { Faction } from '../model/types';
@@ -16,7 +17,7 @@ export function whenIconsLoaded(callback: () => void): void {
 }
 
 export function starbaseIconKey(owner: Faction): string {
-  return `${owner}-starbase`;
+  return `${owner}-starbase-sc2`;
 }
 
 /** Half the drawn width/height of an icon, for hit-testing and selection rings. */
