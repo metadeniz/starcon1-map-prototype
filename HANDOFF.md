@@ -7,6 +7,7 @@ The user's opening request was only "Let's work on a Star Control 1 clone." The 
 - Project dir: `G:\My Drive\Game - Starcon1 clone` (earlier work was at `C:\Users\Deniz\Dropbox\Game - Starcon1 clone`; the files are now under G:).
 - Windows, PowerShell. Node.js 24 was installed via winget with the user's OK. The harness's PATH can be stale, so in PowerShell run: `$env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine")+";"+[Environment]::GetEnvironmentVariable("PATH","User")` before `npm`/`npx`.
 - Commands: `npx tsc -b` (typecheck), `npx vitest run` (tests), `npm run build`, `npm run dev` (Vite on :5173).
+- `play.html` is the whole game in one file, for opening by double-click (index.html only works through `npm run dev`, because browsers block its separate script on file:// pages). Rebuild it with `npm run build:file` after changing `src/` or `index.html`.
 - `.claude/launch.json` + `.claude/dev-server.cmd` start the dev server for the preview pane (they set PATH because the harness can't find node). Clutter to remove: `vite.config.ts.timestamp-*.mjs`, `dist/`, `tsconfig.tsbuildinfo`.
 - Last state: 72 tests passed and typecheck was clean. The final browser verification was interrupted (see "Unverified").
 
