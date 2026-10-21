@@ -1,13 +1,13 @@
 // Pixel-art planet images for explored worlds, one per type, cut from D's planet preview sheet
-// at native size into planetTypes.png. They are about 28px tall, a planet circle's diameter.
+// at its largest native size into planetTypes.png and scaled down smoothly to the planet's size.
 
 import type { PlanetType } from '../model/types';
 
 // x, y, w, h: each type's rectangle in planetTypes.png.
 const FRAMES: Record<PlanetType, { x: number; y: number; w: number; h: number }> = {
-  life: { x: 0, y: 0, w: 32, h: 27 },
-  mineral: { x: 33, y: 0, w: 33, h: 28 },
-  dead: { x: 67, y: 0, w: 32, h: 27 },
+  life: { x: 0, y: 0, w: 65, h: 55 },
+  mineral: { x: 66, y: 0, w: 66, h: 55 },
+  dead: { x: 133, y: 0, w: 64, h: 55 },
 };
 
 const atlas: HTMLImageElement | undefined =
@@ -33,13 +33,15 @@ export function drawPlanetSprite(
 ): boolean {
   if (!atlas || !atlas.complete || atlas.naturalWidth === 0) return false;
   const frame = FRAMES[type];
-  const scale = (radius * 2) / 28;
-  const w = Math.round(frame.w * scale);
-  const h = Math.round(frame.h * scale);
-  // Round to whole pixels so the pixel art stays crisp.
+  const scale = (radius * 2) / 55;
+  const w = frame.w * scale;
+  const h = frame.h * scale;
   const smoothing = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = false;
+  const quality = ctx.imageSmoothingQuality;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(atlas, frame.x, frame.y, frame.w, frame.h, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
   ctx.imageSmoothingEnabled = smoothing;
+  ctx.imageSmoothingQuality = quality;
   return true;
 }

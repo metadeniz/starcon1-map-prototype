@@ -4,9 +4,9 @@ import type { ReachablePlanet } from '../game/gameState';
 import { drawMapIcon, iconRadius, starbaseIconKey } from './shipIcons';
 import { drawPlanetSprite } from './planetSprites';
 
-const PLANET_RADIUS = 14;
+const PLANET_RADIUS = 10;
 /** Half the width of a planet marker (colony diamond, mine plus, fortification square). */
-const MARKER_HALF = 24;
+const MARKER_HALF = 19;
 /** Distance from a planet's centre to the ring its starbase and ships sit on, clear of a marker. */
 const RING_DISTANCE = MARKER_HALF + 14;
 const SHIP_HIT_RADIUS = 12;
@@ -17,7 +17,8 @@ const TYPE_COLORS: Record<PlanetType, string> = {
   dead: '#6b7280',
 };
 
-const UNEXPLORED_COLOR = '#2f6fb8';
+// Grey rather than blue, so unexplored planets don't read as the Hierarchy's.
+const UNEXPLORED_COLOR = '#6b7385';
 
 // SC1's planet markers (setup.pkg package 16, type 3, instance 4) are 5x5 one-colour glyphs: a
 // diamond for a colony, a plus for a mine and a square for a fortification. Here they are drawn as
@@ -56,9 +57,10 @@ function drawMarker(ctx: CanvasRenderingContext2D, shape: MarkerShape, cx: numbe
   ctx.stroke();
 }
 
+// SC1's side colours: yellow for the Alliance and blue for the Hierarchy.
 const OWNER_COLORS: Record<Owner, string> = {
-  alliance: '#4da3ff',
-  hierarchy: '#ff5c5c',
+  alliance: '#ffff7f',
+  hierarchy: '#2fa7f3',
   neutral: '#9aa4b8',
 };
 
