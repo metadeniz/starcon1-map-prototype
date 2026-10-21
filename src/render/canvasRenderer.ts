@@ -17,14 +17,16 @@ const TYPE_COLORS: Record<PlanetType, string> = {
 const UNEXPLORED_COLOR = '#2f6fb8';
 
 // SC1's planet markers (setup.pkg package 16, type 3, instance 4): 5x5 one-colour glyphs that the
-// strategic map draws over a star. A fortified colony or mine gets the square with the diamond or
-// plus drawn inside it, the same way SC1 layers them.
+// strategic map draws on a star. A fortified colony or mine gets the square with the diamond or
+// plus drawn over it, the same way SC1 layers them.
 const MARKER_GLYPHS = {
   colony: ['..#..', '.#.#.', '#...#', '.#.#.', '..#..'],
   mine: ['..#..', '..#..', '#####', '..#..', '..#..'],
   fortified: ['#####', '#...#', '#...#', '#...#', '#####'],
 };
-const MARKER_SCALE = 3;
+// Drawn about as wide as a planet circle.
+const MARKER_SCALE = 6;
+const MAP_BACKGROUND = '#05070d';
 // SC1's own marker colours (palette entries the exe picks at linear 0x412E): yellow for the
 // Alliance and blue for the Hierarchy, with the fortification square a lighter shade.
 const MARKER_COLORS: Record<Owner, { improvement: string; fortified: string }> = {
@@ -182,24 +184,37 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
     }
   }
 
-  // Planets
+  // Planets. An explored planet with a colony, mine or fortification is drawn as SC1's marker
+  // in place of the circle; everything else stays a circle coloured by type.
   for (const p of state.planets) {
     const s = toScreen(p.x, p.y, view);
+    const selected = p.id === options.selectedPlanetId;
+    const fortified = p.fortified || p.improvement === 'fortification';
+
+    if (p.explored && (fortified || p.improvement)) {
+      const colors = MARKER_COLORS[p.owner];
+      // Black out the marker's cell so links don't show through its gaps, as on SC1's black map.
+      const half = (5 * MARKER_SCALE) / 2;
+      ctx.fillStyle = MAP_BACKGROUND;
+      ctx.fillRect(Math.round(s.x - half), Math.round(s.y - half), 5 * MARKER_SCALE, 5 * MARKER_SCALE);
+      if (fortified) drawMarkerGlyph(ctx, MARKER_GLYPHS.fortified, s.x, s.y, colors.fortified);
+      if (p.improvement === 'colony') drawMarkerGlyph(ctx, MARKER_GLYPHS.colony, s.x, s.y, colors.improvement);
+      if (p.improvement === 'mine') drawMarkerGlyph(ctx, MARKER_GLYPHS.mine, s.x, s.y, colors.improvement);
+      if (selected) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(Math.round(s.x - half) - 4, Math.round(s.y - half) - 4, 5 * MARKER_SCALE + 8, 5 * MARKER_SCALE + 8);
+      }
+      continue;
+    }
 
     ctx.beginPath();
     ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;
     ctx.fill();
-    ctx.lineWidth = p.id === options.selectedPlanetId ? 4 : 2.5;
+    ctx.lineWidth = selected ? 4 : 2.5;
     ctx.strokeStyle = OWNER_COLORS[p.owner];
     ctx.stroke();
-
-    // Improvements stay hidden until the planet is explored, as in the side panel.
-    if (!p.explored) continue;
-    const colors = MARKER_COLORS[p.owner];
-    if (p.fortified || p.improvement === 'fortification') drawMarkerGlyph(ctx, MARKER_GLYPHS.fortified, s.x, s.y, colors.fortified);
-    if (p.improvement === 'colony') drawMarkerGlyph(ctx, MARKER_GLYPHS.colony, s.x, s.y, colors.improvement);
-    if (p.improvement === 'mine') drawMarkerGlyph(ctx, MARKER_GLYPHS.mine, s.x, s.y, colors.improvement);
   }
 
   // Starbases and ships: SC1's own map icons, arranged around their planet
