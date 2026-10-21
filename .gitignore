@@ -6,3 +6,4 @@ vite.config.ts.timestamp-*.mjs
 .DS_Store
 Thumbs.db
 desktop.ini
+dist-file/

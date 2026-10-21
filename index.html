@@ -287,6 +287,15 @@
         opacity: 0.4;
         cursor: not-allowed;
       }
+      #not-running {
+        background: #3a1c1c;
+        border: 1px solid #ff8a8a;
+        color: #ffd0d0;
+        border-radius: 4px;
+        padding: 10px;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
       #scenario-error {
         color: #ff8a8a;
         font-size: 12px;
@@ -355,5 +364,19 @@
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
+    <script>
+      // If the game's code never ran (this page was opened as a file instead of through
+      // `npm run dev`), say what to open instead of leaving dead buttons.
+      window.addEventListener('load', () => {
+        if (document.querySelector('#scenario-select option')) return;
+        const note = document.createElement('div');
+        note.id = 'not-running';
+        note.innerHTML =
+          location.protocol === 'file:'
+            ? 'The game can\'t run from this file. Open <b>play.html</b> in the same folder instead, or run <code>npm run dev</code> and open http://localhost:5173.'
+            : 'The game\'s code failed to load. Check the browser console for errors.';
+        document.querySelector('.picker-card')?.prepend(note);
+      });
+    </script>
   </body>
 </html>
