@@ -10,34 +10,52 @@ function preferredImprovement(planetType: 'life' | 'mineral' | 'dead'): Improvem
 }
 
 /**
- * A simple heuristic AI turn: idle ships either start building on eligible unclaimed ground
- * they're already sitting on, or move toward the nearest planet not already theirs to expand
- * the frontier. Any owned starbase spends available Starbucks on the best ship it can afford.
- * Not strategically deep — just enough to keep the opposing side playing a full game.
+ * A simple heuristic AI turn, spending the side's actions in priority order: ships already
+ * sitting on eligible unclaimed ground start building there, then an owned starbase buys the
+ * best ship it can afford, then the remaining actions move ships toward the nearest planet not
+ * already theirs. Not strategically deep — just enough to keep the opposing side playing a full game.
  */
 export function runAiTurn(state: GameState, faction: Faction): void {
-  const claimedTargets = new Set<string>();
+  const ships = () => state.ships.filter((s) => s.owner === faction);
+  const busy = new Set<string>();
 
-  for (const ship of state.ships.filter((s) => s.owner === faction)) {
+  for (const ship of ships()) {
+    if (state.actionsRemaining <= 0) return;
     const planet = state.planets.find((p) => p.id === ship.planetId);
     if (!planet) continue;
 
     // Already building here itself? Stay and let it finish.
-    if (planet.underConstruction?.shipId === ship.id) continue;
+    if (planet.underConstruction?.shipId === ship.id) {
+      busy.add(ship.id);
+      continue;
+    }
 
     if (!planet.hasStarbase && !planet.improvement && !planet.underConstruction && (planet.owner === 'neutral' || planet.owner === faction)) {
       const type = preferredImprovement(planet.type);
       if (isImprovementAllowed(planet, type)) {
         try {
           startConstruction(ship.id, type, state);
-          continue;
+          busy.add(ship.id);
         } catch {
-          // Fall through to movement if construction couldn't start for some reason.
+          // Leave it free to move if construction couldn't start for some reason.
         }
       }
     }
+  }
 
-    if (ship.movesRemaining <= 0) continue;
+  for (const planet of state.planets.filter((p) => p.hasStarbase && p.owner === faction)) {
+    if (state.actionsRemaining <= 0) return;
+    const allowed = buildableRoles(state, faction);
+    const affordable = SHIP_ROSTER[faction].filter((def) => allowed.includes(def.role)).sort((a, b) => b.cost - a.cost).find((def) => state.starbucks[faction] >= def.cost);
+    if (affordable) {
+      buildShip(faction, planet.id, affordable.role, state);
+    }
+  }
+
+  const claimedTargets = new Set<string>();
+  for (const ship of ships()) {
+    if (state.actionsRemaining <= 0) return;
+    if (busy.has(ship.id)) continue;
 
     const reachable = Array.from(reachablePlanets(ship, state).values()).filter((r) => !claimedTargets.has(r.planetId));
     if (reachable.length === 0) continue;
@@ -50,13 +68,5 @@ export function runAiTurn(state: GameState, faction: Faction): void {
 
     claimedTargets.add(target.planetId);
     moveShip(ship, target.planetId, state);
-  }
-
-  for (const planet of state.planets.filter((p) => p.hasStarbase && p.owner === faction)) {
-    const allowed = buildableRoles(state, faction);
-    const affordable = SHIP_ROSTER[faction].filter((def) => allowed.includes(def.role)).sort((a, b) => b.cost - a.cost).find((def) => state.starbucks[faction] >= def.cost);
-    if (affordable) {
-      buildShip(faction, planet.id, affordable.role, state);
-    }
   }
 }

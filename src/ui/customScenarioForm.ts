@@ -66,7 +66,7 @@ export function renderCustomForm(sc: ScenarioConfig): string {
     ${shipTables}
     <table class="custom-table">
       <tr><td>Moves first</td><td><select data-field="firstMove">${option('human', 'You')}${option('hierarchy', 'Hierarchy')}${option('alliance', 'Alliance')}</select></td></tr>
-      <tr><td>Moves per ship per turn</td><td>${numberInput('movesPerTurn', sc.movesPerTurn, 9)}</td></tr>
+      <tr><td>Actions per side per turn</td><td>${numberInput('actionsPerTurn', sc.actionsPerTurn, 9)}</td></tr>
       <tr><td>Starbucks per mine per turn</td><td>${numberInput('mineIncomePerTurn', sc.mineIncomePerTurn, 99)}</td></tr>
       <tr><td>Random events off (DOS game only)</td><td>${checkbox('randomEventsOff', sc.randomEventsOff ?? false)}</td></tr>
     </table>
@@ -75,7 +75,7 @@ export function renderCustomForm(sc: ScenarioConfig): string {
       <select id="save-slot" aria-label="Scenario slot">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<option value="${n}">SCENARIO.${n}</option>`).join('')}</select>
       <button data-action="save-custom">Save as SCENARIO file</button>
     </div>
-    <div class="save-note">The file is for Star Control 1 on DOS. Moves per turn and mine income aren't part of it, and "You" moving first is saved as the Alliance moving first.</div>
+    <div class="save-note">The file is for Star Control 1 on DOS. Actions per turn and mine income aren't part of it, and "You" moving first is saved as the Alliance moving first.</div>
     <div id="custom-problems"></div>`;
 }
 
@@ -98,7 +98,7 @@ export function applyCustomInput(sc: ScenarioConfig, input: HTMLInputElement | H
     sc.firstMove = value === 'human' ? undefined : (value as Faction);
     return;
   }
-  if (first === 'movesPerTurn' || first === 'mineIncomePerTurn') {
+  if (first === 'actionsPerTurn' || first === 'mineIncomePerTurn') {
     sc[first] = num();
     return;
   }

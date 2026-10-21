@@ -108,7 +108,7 @@ export function sc1ToScenarioConfig(sc1: Sc1Scenario): ScenarioConfig {
     description: sc1.description || undefined,
     sides: { alliance: toSide('alliance', sc1.alliance), hierarchy: toSide('hierarchy', sc1.hierarchy) },
     firstMove: sc1.alliance.flags & FLAG_HIERARCHY_FIRST ? 'hierarchy' : 'alliance',
-    movesPerTurn: 3,
+    actionsPerTurn: 3,
     mineIncomePerTurn: 3,
     randomEventsOff: (sc1.alliance.flags & FLAG_RANDOM_EVENTS_OFF) !== 0,
   };

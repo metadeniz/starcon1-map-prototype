@@ -42,7 +42,7 @@ function toLayout(flat: Map<ClusterStar, FlatPoint>): (star: ClusterStar) => { x
   };
 }
 
-function makeShip(scenario: ScenarioConfig, owner: Faction, role: string, planetId: string): Ship {
+function makeShip(owner: Faction, role: string, planetId: string): Ship {
   const def = getShipDefinition(owner, role);
   return {
     id: nextId('ship'),
@@ -51,7 +51,6 @@ function makeShip(scenario: ScenarioConfig, owner: Faction, role: string, planet
     crew: def.crew,
     currentCrew: def.crew,
     planetId,
-    movesRemaining: scenario.movesPerTurn,
   };
 }
 
@@ -85,7 +84,6 @@ export function generateGalaxy(scenario: ScenarioConfig, humanFaction: Faction, 
       type: 'dead',
       owner: 'neutral',
       hasStarbase: false,
-      starbaseMovesRemaining: 0,
       explored: false,
     });
   }
@@ -145,7 +143,7 @@ export function generateGalaxy(scenario: ScenarioConfig, humanFaction: Faction, 
     return [planet, wasOwn];
   };
   const placeShip = (faction: Faction, ship: StartingShip, planet: Planet) =>
-    ships.push(makeShip(scenario, faction, ship.role, planet.id));
+    ships.push(makeShip(faction, ship.role, planet.id));
 
   for (const faction of FACTIONS) {
     const side = scenario.sides[faction];
@@ -155,7 +153,6 @@ export function generateGalaxy(scenario: ScenarioConfig, humanFaction: Faction, 
       if (!wasOwn) unowned[faction]--;
       planet.owner = faction;
       planet.hasStarbase = true;
-      planet.starbaseMovesRemaining = 1;
     }
     for (const ship of side.ships) {
       if (ship.zone > 1) continue;
@@ -194,5 +191,6 @@ export function generateGalaxy(scenario: ScenarioConfig, humanFaction: Faction, 
     starbucks: { alliance: scenario.sides.alliance.starbucks, hierarchy: scenario.sides.hierarchy.starbucks },
     humanFaction,
     currentFaction: scenario.firstMove ?? humanFaction,
+    actionsRemaining: scenario.actionsPerTurn,
   };
 }

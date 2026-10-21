@@ -6,6 +6,7 @@ import {
   moveShip,
   moveStarbase,
   reachablePlanets,
+  STARBASE_MOVE_ACTIONS,
   startConstruction,
   starbaseDestinations,
 } from '../src/game/gameState';
@@ -18,7 +19,6 @@ function makePlanet(overrides: Partial<Planet> & Pick<Planet, 'id'>): Planet {
     type: 'dead',
     owner: 'neutral',
     hasStarbase: false,
-    starbaseMovesRemaining: 0,
     explored: true,
     x: 0,
     y: 0,
@@ -32,7 +32,6 @@ function makeShip(overrides: Partial<Ship> & Pick<Ship, 'id' | 'planetId'>): Shi
     owner: 'alliance',
     crew: 6,
     currentCrew: 6,
-    movesRemaining: 3,
     ...overrides,
   };
 }
@@ -40,7 +39,7 @@ function makeShip(overrides: Partial<Ship> & Pick<Ship, 'id' | 'planetId'>): Shi
 function makeState(): GameState {
   // A-B-C-D chain plus a mineral planet M hanging off B.
   const planets: Planet[] = [
-    makePlanet({ id: 'A', owner: 'alliance', hasStarbase: true, starbaseMovesRemaining: 1, type: 'life' }),
+    makePlanet({ id: 'A', owner: 'alliance', hasStarbase: true, type: 'life' }),
     makePlanet({ id: 'B' }),
     makePlanet({ id: 'C' }),
     makePlanet({ id: 'D' }),
@@ -60,11 +59,12 @@ function makeState(): GameState {
     starbucks: { alliance: 25, hierarchy: 25 },
     humanFaction: 'alliance',
     currentFaction: 'alliance',
+    actionsRemaining: 3,
   };
 }
 
 describe('reachablePlanets', () => {
-  it('finds planets within the movement budget via BFS', () => {
+  it('finds planets within the side\'s action budget via BFS', () => {
     const state = makeState();
     const reachable = reachablePlanets(state.ships[0], state);
     expect(new Set(reachable.keys())).toEqual(new Set(['B', 'C', 'M', 'D']));
@@ -72,19 +72,29 @@ describe('reachablePlanets', () => {
     expect(reachable.get('D')!.path).toEqual(['A', 'B', 'C', 'D']);
   });
 
-  it('returns nothing when the ship has no moves left', () => {
+  it('returns nothing when the side has no actions left', () => {
     const state = makeState();
-    state.ships[0].movesRemaining = 0;
+    state.actionsRemaining = 0;
     expect(reachablePlanets(state.ships[0], state).size).toBe(0);
   });
 });
 
 describe('moveShip', () => {
-  it('moves along the shortest path and deducts the correct cost', () => {
+  it('moves along the shortest path and spends one action per jump', () => {
     const state = makeState();
     moveShip(state.ships[0], 'C', state);
     expect(state.ships[0].planetId).toBe('C');
-    expect(state.ships[0].movesRemaining).toBe(1);
+    expect(state.actionsRemaining).toBe(1);
+  });
+
+  it('lets a ship move more than once a turn, each jump spending an action', () => {
+    const state = makeState();
+    moveShip(state.ships[0], 'B', state);
+    moveShip(state.ships[0], 'C', state);
+    moveShip(state.ships[0], 'D', state);
+    expect(state.ships[0].planetId).toBe('D');
+    expect(state.actionsRemaining).toBe(0);
+    expect(() => moveShip(state.ships[0], 'C', state)).toThrow();
   });
 
   it('marks every planet on the path as explored', () => {
@@ -97,19 +107,20 @@ describe('moveShip', () => {
     expect(state.planets.find((p) => p.id === 'D')!.explored).toBe(false);
   });
 
-  it('throws if the destination is beyond the movement budget', () => {
+  it('throws if the destination is beyond the action budget', () => {
     const state = makeState();
-    state.ships[0].movesRemaining = 1;
+    state.actionsRemaining = 1;
     expect(() => moveShip(state.ships[0], 'D', state)).toThrow();
   });
 
-  it('does not affect other ships at the same planet', () => {
+  it('shares the action budget between ships', () => {
     const state = makeState();
     state.ships.push(makeShip({ id: 's2', planetId: 'A' }));
-    moveShip(state.ships[0], 'B', state);
-    expect(state.ships[0].planetId).toBe('B');
+    moveShip(state.ships[0], 'C', state);
     expect(state.ships[1].planetId).toBe('A');
-    expect(state.ships[1].movesRemaining).toBe(3);
+    expect(new Set(reachablePlanets(state.ships[1], state).keys())).toEqual(new Set(['B']));
+    moveShip(state.ships[1], 'B', state);
+    expect(reachablePlanets(state.ships[0], state).size).toBe(0);
   });
 });
 
@@ -123,7 +134,17 @@ describe('startConstruction', () => {
     expect(m.owner).toBe('neutral');
     expect(m.improvement).toBeUndefined();
     expect(m.underConstruction).toEqual({ type: 'mine', owner: 'alliance', shipId: 's1', turnsRemaining: 3 }); // crew 6 -> 3 turns
-    expect(state.starbucks.alliance).toBe(25); // no cost
+    expect(state.starbucks.alliance).toBe(25); // no Starbucks cost
+    expect(state.actionsRemaining).toBe(0); // two jumps plus one action to start building
+  });
+
+  it('rejects starting construction with no actions left', () => {
+    const state = makeState();
+    moveShip(state.ships[0], 'B', state);
+    moveShip(state.ships[0], 'M', state);
+    state.actionsRemaining = 0;
+    expect(() => startConstruction('s1', 'mine', state)).toThrow(InvalidActionError);
+    expect(state.planets.find((p) => p.id === 'M')!.underConstruction).toBeUndefined();
   });
 
   it('uses the ordering ship\'s own crew size for duration, not other ships present', () => {
@@ -160,6 +181,7 @@ describe('startConstruction', () => {
     moveShip(state.ships[0], 'B', state);
     moveShip(state.ships[0], 'M', state);
     startConstruction('s1', 'mine', state);
+    state.actionsRemaining = 1;
     moveShip(state.ships[0], 'B', state);
     expect(state.planets.find((p) => p.id === 'M')!.underConstruction).toBeUndefined();
   });
@@ -169,7 +191,8 @@ describe('startConstruction', () => {
     moveShip(state.ships[0], 'B', state);
     moveShip(state.ships[0], 'M', state);
     startConstruction('s1', 'mine', state);
-    state.ships.push(makeShip({ id: 's2', planetId: 'M', movesRemaining: 3 }));
+    state.ships.push(makeShip({ id: 's2', planetId: 'M' }));
+    state.actionsRemaining = 1;
     moveShip(state.ships[1], 'B', state);
     expect(state.planets.find((p) => p.id === 'M')!.underConstruction).toBeDefined();
   });
@@ -181,8 +204,16 @@ describe('buildShip', () => {
     buildShip('alliance', 'A', 'shofixti-scout', state);
     expect(state.ships.length).toBe(2);
     expect(state.ships[1].planetId).toBe('A');
-    expect(state.ships[1].movesRemaining).toBe(3);
     expect(state.starbucks.alliance).toBe(25 - 5);
+    expect(state.actionsRemaining).toBe(2);
+  });
+
+  it('rejects building with no actions left', () => {
+    const state = makeState();
+    state.actionsRemaining = 0;
+    expect(() => buildShip('alliance', 'A', 'shofixti-scout', state)).toThrow(InvalidActionError);
+    expect(state.ships.length).toBe(1);
+    expect(state.starbucks.alliance).toBe(25);
   });
 
   it('rejects building at a planet without an owned starbase', () => {
@@ -220,11 +251,10 @@ describe('moveStarbase', () => {
     const a = state.planets.find((p) => p.id === 'A')!;
     const b = state.planets.find((p) => p.id === 'B')!;
     expect(a.hasStarbase).toBe(false);
-    expect(a.starbaseMovesRemaining).toBe(0);
     expect(b.hasStarbase).toBe(true);
     expect(b.owner).toBe('alliance');
-    expect(b.starbaseMovesRemaining).toBe(0);
     expect(b.explored).toBe(true);
+    expect(state.actionsRemaining).toBe(3 - STARBASE_MOVE_ACTIONS);
   });
 
   it('rejects moving more than one step (not directly connected)', () => {
@@ -235,8 +265,17 @@ describe('moveStarbase', () => {
   it('rejects moving again after already moving this turn', () => {
     const state = makeState();
     moveStarbase('A', 'B', state);
-    // B now has the starbase but used its move; C is a valid neighbor otherwise.
+    // The move used all 3 actions; C is a valid neighbor otherwise.
     expect(() => moveStarbase('B', 'C', state)).toThrow(InvalidActionError);
+  });
+
+  it('needs 3 actions, so any other action first rules it out this turn', () => {
+    const state = makeState();
+    moveShip(state.ships[0], 'B', state);
+    moveShip(state.ships[0], 'A', state);
+    expect(() => moveStarbase('A', 'B', state)).toThrow(InvalidActionError);
+    expect(state.planets.find((p) => p.id === 'A')!.hasStarbase).toBe(true);
+    expect(state.actionsRemaining).toBe(1);
   });
 
   it('rejects moving onto a planet with an improvement, or owned by the other side', () => {
@@ -259,33 +298,26 @@ describe('endTurn (alternating turns)', () => {
     endTurn(state);
   }
 
-  it('switches currentFaction to the other side and refills only its ships\' moves', () => {
+  it('switches currentFaction to the other side and gives it a fresh set of actions', () => {
     const state = makeState();
     moveShip(state.ships[0], 'B', state);
-    expect(state.ships[0].movesRemaining).toBe(2);
+    expect(state.actionsRemaining).toBe(2);
 
     endTurn(state);
     expect(state.currentFaction).toBe('hierarchy');
     expect(state.turn).toBe(1); // round hasn't completed yet
-    expect(state.ships[0].movesRemaining).toBe(2); // alliance ship untouched, it's not their turn
+    expect(state.actionsRemaining).toBe(state.scenario.actionsPerTurn);
 
     endTurn(state);
     expect(state.currentFaction).toBe('alliance');
     expect(state.turn).toBe(2); // round completed on return to the human's side
-    expect(state.ships[0].movesRemaining).toBe(state.scenario.movesPerTurn); // refilled
+    expect(state.actionsRemaining).toBe(state.scenario.actionsPerTurn);
   });
 
-  it('refills the starbase\'s one move only when its own side\'s turn comes back around', () => {
+  it('lets an alliance ship reach nothing on the hierarchy\'s turn', () => {
     const state = makeState();
-    moveStarbase('A', 'B', state);
-    const b = state.planets.find((p) => p.id === 'B')!;
-    expect(b.starbaseMovesRemaining).toBe(0);
-
-    endTurn(state); // hierarchy's turn; alliance's starbase untouched
-    expect(b.starbaseMovesRemaining).toBe(0);
-
-    endTurn(state); // back to alliance
-    expect(b.starbaseMovesRemaining).toBe(1);
+    endTurn(state);
+    expect(reachablePlanets(state.ships[0], state).size).toBe(0);
   });
 
   it('rejects moving, building, or constructing for a side whose turn it is not', () => {

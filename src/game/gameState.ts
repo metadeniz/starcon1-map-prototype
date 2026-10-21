@@ -13,17 +13,21 @@ function buildAdjacency(planets: Planet[], connections: Connection[]): Map<strin
   return adjacency;
 }
 
+/** Actions a starbase move costs: a whole SC1-sized turn. */
+export const STARBASE_MOVE_ACTIONS = 3;
+
 export interface ReachablePlanet {
   planetId: string;
   cost: number;
   path: string[]; // planet ids from the ship's current planet to this one, inclusive of both ends
 }
 
-/** BFS from the ship's current planet, bounded by its remaining movement points (1 point/edge). */
+/** BFS from the ship's current planet, bounded by its side's remaining actions (1 action per jump). */
 export function reachablePlanets(ship: Ship, state: GameState): Map<string, ReachablePlanet> {
   const adjacency = buildAdjacency(state.planets, state.connections);
   const result = new Map<string, ReachablePlanet>();
-  if (ship.movesRemaining <= 0) return result;
+  const budget = ship.owner === state.currentFaction ? state.actionsRemaining : 0;
+  if (budget <= 0) return result;
 
   const queue: string[] = [ship.planetId];
   const paths = new Map<string, string[]>([[ship.planetId, [ship.planetId]]]);
@@ -32,7 +36,7 @@ export function reachablePlanets(ship: Ship, state: GameState): Map<string, Reac
   while (queue.length) {
     const current = queue.shift()!;
     const currentCost = costs.get(current)!;
-    if (currentCost >= ship.movesRemaining) continue;
+    if (currentCost >= budget) continue;
     for (const neighbor of adjacency.get(current) ?? []) {
       if (costs.has(neighbor)) continue;
       const cost = currentCost + 1;
@@ -65,7 +69,18 @@ function cancelConstructionIfBuilderAbsent(state: GameState, planet: Planet): vo
 export class InvalidMoveError extends Error {}
 export class InvalidActionError extends Error {}
 
-/** Moves a ship to `destinationPlanetId` if reachable within its remaining movement points. */
+/** Spends `cost` of the current side's actions, or throws if it doesn't have that many left. */
+function spendActions(state: GameState, cost: number): void {
+  if (state.actionsRemaining < cost) {
+    throw new InvalidActionError(cost === 1 ? 'No actions left this turn' : `That takes ${cost} actions; ${state.actionsRemaining} left this turn`);
+  }
+  state.actionsRemaining -= cost;
+}
+
+/**
+ * Moves a ship to `destinationPlanetId`. Each jump costs one of the side's actions, so a ship
+ * may move several times a turn as long as the side has actions left.
+ */
 export function moveShip(ship: Ship, destinationPlanetId: string, state: GameState): void {
   if (ship.owner !== state.currentFaction) {
     throw new InvalidActionError("It's not this side's turn");
@@ -76,11 +91,11 @@ export function moveShip(ship: Ship, destinationPlanetId: string, state: GameSta
   const reachable = reachablePlanets(ship, state);
   const target = reachable.get(destinationPlanetId);
   if (!target) {
-    throw new InvalidMoveError('Destination is not reachable with the remaining movement points');
+    throw new InvalidMoveError('Destination is not reachable with the actions left this turn');
   }
+  spendActions(state, target.cost);
   const originPlanetId = ship.planetId;
   ship.planetId = destinationPlanetId;
-  ship.movesRemaining -= target.cost;
 
   const visitedIds = new Set(target.path);
   for (const planet of state.planets) {
@@ -110,6 +125,7 @@ export function startConstruction(shipId: string, type: ImprovementType, state: 
   if (!isImprovementAllowed(planet, type)) {
     throw new InvalidActionError(`${type} cannot be built on a ${planet.type} world`);
   }
+  spendActions(state, 1);
 
   planet.underConstruction = {
     type,
@@ -134,7 +150,7 @@ export function starbaseDestinations(planet: Planet, state: GameState): string[]
   });
 }
 
-/** Relocates the starbase at `planetId` one step to `destinationPlanetId` (its only move this turn). */
+/** Relocates the starbase at `planetId` one step to `destinationPlanetId`, for `STARBASE_MOVE_ACTIONS` actions. */
 export function moveStarbase(planetId: string, destinationPlanetId: string, state: GameState): void {
   const planet = state.planets.find((p) => p.id === planetId);
   if (!planet) throw new InvalidActionError('Unknown planet');
@@ -142,23 +158,19 @@ export function moveStarbase(planetId: string, destinationPlanetId: string, stat
   if (planet.owner !== state.currentFaction) {
     throw new InvalidActionError("It's not this side's turn");
   }
-  if (planet.starbaseMovesRemaining <= 0) {
-    throw new InvalidActionError('This starbase has already moved this turn');
-  }
   if (!starbaseDestinations(planet, state).includes(destinationPlanetId)) {
     throw new InvalidActionError('Not a valid destination for the starbase');
   }
+  spendActions(state, STARBASE_MOVE_ACTIONS);
 
   const destination = state.planets.find((p) => p.id === destinationPlanetId)!;
   planet.hasStarbase = false;
-  planet.starbaseMovesRemaining = 0;
   destination.hasStarbase = true;
   destination.owner = planet.owner;
-  destination.starbaseMovesRemaining = 0; // already used its one move getting here
   destination.explored = true;
 }
 
-/** Builds a ship at an owned starbase. */
+/** Builds a ship at an owned starbase. As in SC1, this is one action. */
 export function buildShip(owner: Faction, planetId: string, role: ShipRole, state: GameState): void {
   if (owner !== state.currentFaction) {
     throw new InvalidActionError("It's not this side's turn");
@@ -175,6 +187,7 @@ export function buildShip(owner: Faction, planetId: string, role: ShipRole, stat
   if (state.starbucks[owner] < def.cost) {
     throw new InvalidActionError('Not enough Starbucks');
   }
+  spendActions(state, 1);
 
   state.starbucks[owner] -= def.cost;
   state.ships.push({
@@ -184,7 +197,6 @@ export function buildShip(owner: Faction, planetId: string, role: ShipRole, stat
     crew: def.crew,
     currentCrew: def.crew,
     planetId,
-    movesRemaining: state.scenario.movesPerTurn,
   });
 }
 
@@ -221,24 +233,13 @@ export function winner(state: GameState): Faction | null {
 }
 
 /**
- * Ends the current side's turn and hands control to the other side, refilling only its ships'
- * movement points. Sides alternate; a new round (turn counter, construction progress, mine
- * income) only advances once control cycles back to the side that moves first, so a full round
- * still means both sides have acted — matching the original "1-3 turns to build" pacing.
+ * Ends the current side's turn and hands control to the other side with a fresh set of
+ * actions. Sides alternate; a new round (turn counter, construction progress, mine income)
+ * only advances once control cycles back to the side that moves first, so a full round still means both sides have acted — matching the original "1-3 turns to build" pacing.
  */
 export function endTurn(state: GameState): void {
   state.currentFaction = otherFaction(state.currentFaction);
-
-  for (const ship of state.ships) {
-    if (ship.owner === state.currentFaction) {
-      ship.movesRemaining = state.scenario.movesPerTurn;
-    }
-  }
-  for (const planet of state.planets) {
-    if (planet.hasStarbase && planet.owner === state.currentFaction) {
-      planet.starbaseMovesRemaining = 1;
-    }
-  }
+  state.actionsRemaining = state.scenario.actionsPerTurn;
 
   if (state.currentFaction !== firstMover(state)) return;
 

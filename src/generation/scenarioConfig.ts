@@ -21,6 +21,6 @@ export const DEFAULT_SCENARIO: ScenarioConfig = {
     alliance: side(['shofixti-scout', 'shofixti-scout', 'earthling-cruiser']),
     hierarchy: side(['umgah-drone', 'umgah-drone', 'ilwrath-avenger']),
   },
-  movesPerTurn: 3,
+  actionsPerTurn: 3,
   mineIncomePerTurn: 3,
 };

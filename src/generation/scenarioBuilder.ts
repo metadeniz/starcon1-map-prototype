@@ -45,7 +45,7 @@ export function randomTypicalScenario(rng: Rng): ScenarioConfig {
     title: 'Random typical game',
     menuLine: `${perSide} worlds a side, a starbase, ${ranks.length} ships and ${starbucks} Starbucks each.`,
     sides: { alliance: side('alliance'), hierarchy: side('hierarchy') },
-    movesPerTurn: DEFAULT_SCENARIO.movesPerTurn,
+    actionsPerTurn: DEFAULT_SCENARIO.actionsPerTurn,
     mineIncomePerTurn: DEFAULT_SCENARIO.mineIncomePerTurn,
   };
 }
@@ -71,8 +71,8 @@ export function scenarioProblems(scenario: ScenarioConfig): string[] {
     if (!Number.isInteger(side.starbucks) || side.starbucks < 0 || side.starbucks > 999)
       problems.push(`${name}'s Starbucks must be 0 to 999.`);
   }
-  if (!Number.isInteger(scenario.movesPerTurn) || scenario.movesPerTurn < 1 || scenario.movesPerTurn > 9)
-    problems.push('Moves per turn must be 1 to 9.');
+  if (!Number.isInteger(scenario.actionsPerTurn) || scenario.actionsPerTurn < 1 || scenario.actionsPerTurn > 9)
+    problems.push('Actions per turn must be 1 to 9.');
   if (!Number.isInteger(scenario.mineIncomePerTurn) || scenario.mineIncomePerTurn < 0 || scenario.mineIncomePerTurn > 99)
     problems.push('Mine income must be 0 to 99.');
   return problems;
