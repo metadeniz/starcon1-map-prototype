@@ -31,7 +31,6 @@ const factionPicker = document.getElementById('faction-picker')!;
 const pickAllianceBtn = document.getElementById('pick-alliance') as HTMLButtonElement;
 const pickHierarchyBtn = document.getElementById('pick-hierarchy') as HTMLButtonElement;
 const scenarioSelect = document.getElementById('scenario-select') as HTMLSelectElement;
-const loadScenarioBtn = document.getElementById('load-scenario-btn') as HTMLButtonElement;
 const scenarioFileInput = document.getElementById('scenario-file') as HTMLInputElement;
 const scenarioInfo = document.getElementById('scenario-info')!;
 const scenarioError = document.getElementById('scenario-error')!;
@@ -102,7 +101,7 @@ function renderScenarioInfo(): void {
   `;
 }
 
-async function loadScenarioFiles(files: FileList): Promise<void> {
+async function loadScenarioFiles(files: FileList | File[]): Promise<void> {
   scenarioError.textContent = '';
   let last = -1;
   for (const file of Array.from(files)) {
@@ -227,10 +226,28 @@ newGameBtn.addEventListener('click', () => {
 });
 
 scenarioSelect.addEventListener('change', renderScenarioInfo);
-loadScenarioBtn.addEventListener('click', () => scenarioFileInput.click());
 scenarioFileInput.addEventListener('change', () => {
-  if (scenarioFileInput.files) void loadScenarioFiles(scenarioFileInput.files);
+  // Copy the list first: clearing the input empties it, and the clear lets the same file be picked again.
+  const files = Array.from(scenarioFileInput.files ?? []);
   scenarioFileInput.value = '';
+  if (files.length > 0) void loadScenarioFiles(files);
+});
+// SCENARIO files can also be dropped onto the scenario picker.
+factionPicker.addEventListener('dragover', (event) => {
+  if (!event.dataTransfer?.types.includes('Files')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  factionPicker.classList.add('drag-over');
+});
+factionPicker.addEventListener('dragleave', (event) => {
+  // relatedTarget is null once the drag leaves the window or the overlay.
+  if (!event.relatedTarget || !factionPicker.contains(event.relatedTarget as Node)) factionPicker.classList.remove('drag-over');
+});
+factionPicker.addEventListener('drop', (event) => {
+  event.preventDefault();
+  factionPicker.classList.remove('drag-over');
+  const files = Array.from(event.dataTransfer?.files ?? []);
+  if (files.length > 0) void loadScenarioFiles(files);
 });
 refreshScenarioOptions(0);
 
