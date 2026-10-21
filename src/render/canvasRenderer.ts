@@ -1,14 +1,15 @@
 import type { GameState, Owner, Planet, PlanetType } from '../model/types';
 import { LAYOUT } from '../generation/layout';
 import type { ReachablePlanet } from '../game/gameState';
-import { drawShipIcon } from './shipIcons';
+import { drawMapIcon, iconRadius, starbaseIconKey } from './shipIcons';
+import { drawPlanetSprite } from './planetSprites';
 
-const PLANET_RADIUS = 14;
-const SHIP_ICON_RADIUS = 6;
-// Roster crew spans roughly 6 (Shofixti Scout/Arilou Skiff) to 42 (Ur-Quan Dreadnought);
-// bigger hulls get a slightly bigger icon so ship "weight" reads at a glance.
-const MIN_CREW = 6;
-const MAX_CREW = 42;
+const PLANET_RADIUS = 10;
+/** Half the width of a planet marker (colony diamond, mine plus, fortification square). */
+const MARKER_HALF = 19;
+/** Distance from a planet's centre to the ring its starbase and ships sit on, clear of a marker. */
+const RING_DISTANCE = MARKER_HALF + 14;
+const SHIP_HIT_RADIUS = 12;
 
 const TYPE_COLORS: Record<PlanetType, string> = {
   life: '#4caf6a',
@@ -17,11 +18,54 @@ const TYPE_COLORS: Record<PlanetType, string> = {
 };
 
 const UNEXPLORED_COLOR = '#2f6fb8';
-const BACKGROUND_COLOR = '#05070d';
 
+// SC1's planet markers (setup.pkg package 16, type 3, instance 4) are 5x5 one-colour glyphs: a
+// diamond for a colony, a plus for a mine and a square for a fortification. Here they are drawn as
+// thin outlines over the planet so it shows through. A fortified colony or mine gets the square
+// with the diamond or plus drawn over it, the same way SC1 layers them.
+type MarkerShape = 'colony' | 'mine' | 'fortified';
+const MARKER_LINE_WIDTH = 3;
+// SC1's side colours, taken from the EGA palette of its report-screen starbases: blues for the
+// Alliance and red, orange and brown for the Hierarchy. The fortification square is a darker
+// shade, drawn first so a colony's diamond or a mine's cross covers it where they cross.
+const MARKER_COLORS: Record<Owner, { improvement: string; fortified: string }> = {
+  alliance: { improvement: '#5757ff', fortified: '#3434b8' },
+  hierarchy: { improvement: '#ff5757', fortified: '#b83434' },
+  neutral: { improvement: '#eef0f5', fortified: '#eef0f5' },
+};
+
+function drawMarker(ctx: CanvasRenderingContext2D, shape: MarkerShape, cx: number, cy: number, color: string): void {
+  const h = MARKER_HALF;
+  ctx.beginPath();
+  if (shape === 'colony') {
+    ctx.moveTo(cx, cy - h);
+    ctx.lineTo(cx + h, cy);
+    ctx.lineTo(cx, cy + h);
+    ctx.lineTo(cx - h, cy);
+    ctx.closePath();
+  } else if (shape === 'mine') {
+    // Centre the lines on pixel centres so they stay sharp (and as bright as the diamond), and run
+    // the arms past a fortification square's outline so they cover it.
+    const x = Math.round(cx) + 0.5;
+    const y = Math.round(cy) + 0.5;
+    const arm = h + MARKER_LINE_WIDTH + 1;
+    ctx.moveTo(x, y - arm);
+    ctx.lineTo(x, y + arm);
+    ctx.moveTo(x - arm, y);
+    ctx.lineTo(x + arm, y);
+  } else {
+    ctx.rect(cx - h, cy - h, 2 * h, 2 * h);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = MARKER_LINE_WIDTH;
+  ctx.lineJoin = 'miter';
+  ctx.stroke();
+}
+
+// SC1's side colours (see MARKER_COLORS).
 const OWNER_COLORS: Record<Owner, string> = {
-  alliance: '#4da3ff',
-  hierarchy: '#ff5c5c',
+  alliance: '#5757ff',
+  hierarchy: '#ff5757',
   neutral: '#9aa4b8',
 };
 
@@ -52,9 +96,14 @@ export function toLogical(screenX: number, screenY: number, view: ViewTransform)
   return { x: (screenX - view.offsetX) / view.scale, y: (screenY - view.offsetY) / view.scale };
 }
 
-/** Screen position of every ship's icon, arranged in a ring around its planet. */
-export function computeShipIconScreenPositions(state: GameState, view: ViewTransform): Map<string, { x: number; y: number }> {
-  const planetsById = new Map(state.planets.map((p) => [p.id, p]));
+/**
+ * Screen position of every ship's icon, arranged in a ring around its planet. A starbase takes
+ * the first slot of its planet's ring (keyed by planet id in `starbases`).
+ */
+export function computeIconScreenPositions(
+  state: GameState,
+  view: ViewTransform,
+): { ships: Map<string, { x: number; y: number }>; starbases: Map<string, { x: number; y: number }> } {
   const shipsByPlanet = new Map<string, typeof state.ships>();
   for (const ship of state.ships) {
     const list = shipsByPlanet.get(ship.planetId) ?? [];
@@ -62,23 +111,28 @@ export function computeShipIconScreenPositions(state: GameState, view: ViewTrans
     shipsByPlanet.set(ship.planetId, list);
   }
 
-  const positions = new Map<string, { x: number; y: number }>();
-  for (const [planetId, ships] of shipsByPlanet) {
-    const p = planetsById.get(planetId);
-    if (!p) continue;
+  const ships = new Map<string, { x: number; y: number }>();
+  const starbases = new Map<string, { x: number; y: number }>();
+  for (const p of state.planets) {
+    const here = shipsByPlanet.get(p.id) ?? [];
+    const slots = here.length + (p.hasStarbase ? 1 : 0);
+    if (slots === 0) continue;
     const base = toScreen(p.x, p.y, view);
-    const dist = PLANET_RADIUS + 18;
-    ships.forEach((ship, i) => {
-      const angle = (i / ships.length) * Math.PI * 2;
-      positions.set(ship.id, { x: base.x + Math.cos(angle) * dist, y: base.y + Math.sin(angle) * dist });
-    });
+    // Start at the top-left so a lone starbase or ship sits clear of the links below it.
+    const slotPosition = (i: number) => {
+      const angle = -Math.PI * 0.75 + (i / slots) * Math.PI * 2;
+      return { x: base.x + Math.cos(angle) * RING_DISTANCE, y: base.y + Math.sin(angle) * RING_DISTANCE };
+    };
+    let slot = 0;
+    if (p.hasStarbase) starbases.set(p.id, slotPosition(slot++));
+    for (const ship of here) ships.set(ship.id, slotPosition(slot++));
   }
-  return positions;
+  return { ships, starbases };
 }
 
 export function shipAt(screenX: number, screenY: number, state: GameState, view: ViewTransform): string | undefined {
-  const positions = computeShipIconScreenPositions(state, view);
-  const hitRadius = SHIP_ICON_RADIUS + 4;
+  const positions = computeIconScreenPositions(state, view).ships;
+  const hitRadius = SHIP_HIT_RADIUS;
   let closest: string | undefined;
   let closestDist = Infinity;
   for (const [shipId, pos] of positions) {
@@ -140,51 +194,58 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
       if (!p) continue;
       const s = toScreen(p.x, p.y, view);
       ctx.beginPath();
-      ctx.arc(s.x, s.y, PLANET_RADIUS + 7, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, PLANET_RADIUS + 6, 0, Math.PI * 2);
       ctx.strokeStyle = '#f4d35e';
       ctx.lineWidth = 2;
       ctx.stroke();
     }
   }
 
-  // Planets
+  // Planets. Explored planets show a painted image of their type and the rest stay plain circles.
+  // A colony, mine or fortification on an explored planet adds SC1's marker over the top.
   for (const p of state.planets) {
     const s = toScreen(p.x, p.y, view);
+    const selected = p.id === options.selectedPlanetId;
+    const fortified = p.fortified || p.improvement === 'fortification';
+    const marked = p.explored && (fortified || p.improvement !== undefined);
 
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;
-    ctx.fill();
-    ctx.lineWidth = p.id === options.selectedPlanetId ? 4 : 2.5;
-    ctx.strokeStyle = OWNER_COLORS[p.owner];
-    ctx.stroke();
-
-    if (p.hasStarbase) {
+    if (!(p.explored && drawPlanetSprite(ctx, p.type, s.x, s.y, PLANET_RADIUS))) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, PLANET_RADIUS + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = '#f4d35e';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 3]);
+      ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;
+      ctx.fill();
+    }
+    if (marked) {
+      const colors = MARKER_COLORS[p.owner];
+      if (fortified) drawMarker(ctx, 'fortified', s.x, s.y, colors.fortified);
+      if (p.improvement === 'colony') drawMarker(ctx, 'colony', s.x, s.y, colors.improvement);
+      if (p.improvement === 'mine') drawMarker(ctx, 'mine', s.x, s.y, colors.improvement);
+    }
+    if (selected) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, marked ? MARKER_HALF + 6 : PLANET_RADIUS + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
       ctx.stroke();
-      ctx.setLineDash([]);
     }
   }
 
-  // Ship icons: one per ship, arranged around its planet
-  const shipPositions = computeShipIconScreenPositions(state, view);
+  // Starbases and ships: SC1's own map icons, arranged around their planet
+  const icons = computeIconScreenPositions(state, view);
+  for (const [planetId, pos] of icons.starbases) {
+    const owner = planetsById.get(planetId)?.owner;
+    if (owner === 'alliance' || owner === 'hierarchy') {
+      drawMapIcon(ctx, starbaseIconKey(owner), pos.x, pos.y, OWNER_COLORS[owner]);
+    }
+  }
   for (const ship of state.ships) {
-    const pos = shipPositions.get(ship.id);
+    const pos = icons.ships.get(ship.id);
     if (!pos) continue;
+    drawMapIcon(ctx, ship.type, pos.x, pos.y, OWNER_COLORS[ship.owner]);
 
-    const crewFraction = Math.min(1, Math.max(0, (ship.crew - MIN_CREW) / (MAX_CREW - MIN_CREW)));
-    const size = SHIP_ICON_RADIUS * (0.75 + 0.55 * crewFraction);
-
-    drawShipIcon(ctx, ship.type, pos.x, pos.y, size, OWNER_COLORS[ship.owner], BACKGROUND_COLOR);
-
-    // Selection ring: a fresh circle path, independent of whatever path the icon left behind.
     if (ship.id === options.selectedShipId) {
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, size + 2.5, 0, Math.PI * 2);
+      ctx.arc(pos.x, pos.y, Math.max(iconRadius(ship.type), 8) + 3, 0, Math.PI * 2);
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
