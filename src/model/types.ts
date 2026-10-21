@@ -94,6 +94,8 @@ export interface ScenarioConfig {
   firstMove?: Faction;
   movesPerTurn: number;
   mineIncomePerTurn: number;
+  /** SC1's "random events off" flag. The prototype has no random events, but SC1 files keep it. */
+  randomEventsOff?: boolean;
 }
 
 export interface GameState {

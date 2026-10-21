@@ -7,7 +7,7 @@ import { whenPlanetSpritesLoaded } from './render/planetSprites';
 import { handleCanvasClick, refreshAfterEndTurn, selectShip, startMovingStarbase, type Selection } from './ui/inputHandler';
 import { buildShip, endTurn, InvalidActionError, startConstruction, winner } from './game/gameState';
 import { SC1_PRESETS } from './generation/sc1Presets';
-import { parseSc1Scenario, sc1ToScenarioConfig, ScenarioFileError } from './generation/sc1Scenario';
+import { parseSc1Scenario, sc1ToScenarioConfig, scenarioConfigToSc1, ScenarioFileError, writeSc1Scenario } from './generation/sc1Scenario';
 import { worldTotal } from './generation/galaxyGenerator';
 import { defaultCustomScenario, randomTypicalScenario, scenarioProblems } from './generation/scenarioBuilder';
 import { applyCustomInput, renderCustomForm } from './ui/customScenarioForm';
@@ -57,7 +57,7 @@ function selectedScenario(): ScenarioConfig {
 
 function refreshScenarioOptions(selectIndex: number): void {
   scenarioSelect.innerHTML = scenarios
-    .map((sc, i) => `<option value="${i}">${escapeHtml(sc.title)}${i === CUSTOM ? '…' : ''}</option>`)
+    .map((sc, i) => `<option value="${i}">${i === CUSTOM ? 'Custom game…' : escapeHtml(sc.title)}</option>`)
     .join('');
   scenarioSelect.value = String(selectIndex);
   renderScenarioInfo();
@@ -106,6 +106,8 @@ function refreshScenarioProblems(): void {
   const list = document.getElementById('custom-problems');
   if (list) list.innerHTML = problems.map((p) => `<div>${escapeHtml(p)}</div>`).join('');
   pickAllianceBtn.disabled = pickHierarchyBtn.disabled = problems.length > 0;
+  const save = scenarioInfo.querySelector<HTMLButtonElement>('[data-action="save-custom"]');
+  if (save) save.disabled = problems.length > 0;
 }
 
 function renderScenarioInfo(): void {
@@ -255,9 +257,25 @@ newGameBtn.addEventListener('click', () => {
   factionPicker.classList.remove('hidden');
 });
 
+/** Downloads the custom settings as an SC1 SCENARIO.n file. */
+function saveCustomScenario(): void {
+  if (scenarioProblems(scenarios[CUSTOM]).length > 0) return;
+  const slot = (document.getElementById('save-slot') as HTMLSelectElement).value;
+  const name = `SCENARIO.${slot}`;
+  const bytes = writeSc1Scenario(scenarioConfigToSc1(scenarios[CUSTOM], name));
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 scenarioSelect.addEventListener('change', renderScenarioInfo);
 const onCustomEdit = (event: Event) => {
-  const input = event.target as HTMLInputElement | HTMLSelectElement;
+  const input = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
   if (Number(scenarioSelect.value) !== CUSTOM || !input.dataset.field) return;
   applyCustomInput(scenarios[CUSTOM], input);
   refreshScenarioProblems();
@@ -268,6 +286,7 @@ scenarioInfo.addEventListener('click', (event) => {
   const action = (event.target as HTMLElement).dataset.action;
   if (action === 'reroll') scenarios[TYPICAL] = randomTypicalScenario(Math.random);
   else if (action === 'reset-custom') scenarios[CUSTOM] = defaultCustomScenario();
+  else if (action === 'save-custom') return saveCustomScenario();
   else return;
   renderScenarioInfo();
 });
