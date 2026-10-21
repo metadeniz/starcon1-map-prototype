@@ -4,11 +4,11 @@ import type { ReachablePlanet } from '../game/gameState';
 import { drawMapIcon, iconRadius, starbaseIconKey } from './shipIcons';
 import { drawPlanetSprite } from './planetSprites';
 
-const PLANET_RADIUS = 7;
-/** Painted planet images read better a little larger than the plain circles. */
-const PLANET_SPRITE_RADIUS = 9;
-/** Distance from a planet's centre to the ring its starbase and ships sit on. */
-const RING_DISTANCE = PLANET_RADIUS + 20;
+const PLANET_RADIUS = 14;
+/** Half the width of a planet marker (colony diamond, mine plus, fortification square). */
+const MARKER_HALF = 24;
+/** Distance from a planet's centre to the ring its starbase and ships sit on, clear of a marker. */
+const RING_DISTANCE = MARKER_HALF + 14;
 const SHIP_HIT_RADIUS = 12;
 
 const TYPE_COLORS: Record<PlanetType, string> = {
@@ -19,17 +19,12 @@ const TYPE_COLORS: Record<PlanetType, string> = {
 
 const UNEXPLORED_COLOR = '#2f6fb8';
 
-// SC1's planet markers (setup.pkg package 16, type 3, instance 4): 5x5 one-colour glyphs that the
-// strategic map draws on a star. A fortified colony or mine gets the square with the diamond or
-// plus drawn over it, the same way SC1 layers them.
-const MARKER_GLYPHS = {
-  colony: ['..#..', '.#.#.', '#...#', '.#.#.', '..#..'],
-  mine: ['..#..', '..#..', '#####', '..#..', '..#..'],
-  fortified: ['#####', '#...#', '#...#', '#...#', '#####'],
-};
-// Drawn about as wide as a planet circle.
-const MARKER_SCALE = 3;
-const MAP_BACKGROUND = '#05070d';
+// SC1's planet markers (setup.pkg package 16, type 3, instance 4) are 5x5 one-colour glyphs: a
+// diamond for a colony, a plus for a mine and a square for a fortification. Here they are drawn as
+// thin outlines over the planet so it shows through. A fortified colony or mine gets the square
+// with the diamond or plus drawn over it, the same way SC1 layers them.
+type MarkerShape = 'colony' | 'mine' | 'fortified';
+const MARKER_LINE_WIDTH = 3;
 // SC1's own marker colours (palette entries the exe picks at linear 0x412E): yellow for the
 // Alliance and blue for the Hierarchy, with the fortification square a lighter shade.
 const MARKER_COLORS: Record<Owner, { improvement: string; fortified: string }> = {
@@ -38,15 +33,27 @@ const MARKER_COLORS: Record<Owner, { improvement: string; fortified: string }> =
   neutral: { improvement: '#eef0f5', fortified: '#eef0f5' },
 };
 
-function drawMarkerGlyph(ctx: CanvasRenderingContext2D, glyph: string[], cx: number, cy: number, color: string): void {
-  const left = Math.round(cx - (glyph[0].length * MARKER_SCALE) / 2);
-  const top = Math.round(cy - (glyph.length * MARKER_SCALE) / 2);
-  ctx.fillStyle = color;
-  glyph.forEach((row, y) => {
-    for (let x = 0; x < row.length; x++) {
-      if (row[x] === '#') ctx.fillRect(left + x * MARKER_SCALE, top + y * MARKER_SCALE, MARKER_SCALE, MARKER_SCALE);
-    }
-  });
+function drawMarker(ctx: CanvasRenderingContext2D, shape: MarkerShape, cx: number, cy: number, color: string): void {
+  const h = MARKER_HALF;
+  ctx.beginPath();
+  if (shape === 'colony') {
+    ctx.moveTo(cx, cy - h);
+    ctx.lineTo(cx + h, cy);
+    ctx.lineTo(cx, cy + h);
+    ctx.lineTo(cx - h, cy);
+    ctx.closePath();
+  } else if (shape === 'mine') {
+    ctx.moveTo(cx, cy - h);
+    ctx.lineTo(cx, cy + h);
+    ctx.moveTo(cx - h, cy);
+    ctx.lineTo(cx + h, cy);
+  } else {
+    ctx.rect(cx - h, cy - h, 2 * h, 2 * h);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = MARKER_LINE_WIDTH;
+  ctx.lineJoin = 'miter';
+  ctx.stroke();
 }
 
 const OWNER_COLORS: Record<Owner, string> = {
@@ -133,7 +140,7 @@ export function shipAt(screenX: number, screenY: number, state: GameState, view:
 
 export function planetAt(screenX: number, screenY: number, state: GameState, view: ViewTransform): Planet | undefined {
   const logical = toLogical(screenX, screenY, view);
-  const hitRadius = (PLANET_RADIUS + 8) / view.scale;
+  const hitRadius = (PLANET_RADIUS + 6) / view.scale;
   let closest: Planet | undefined;
   let closestDist = Infinity;
   for (const p of state.planets) {
@@ -187,40 +194,29 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
     }
   }
 
-  // Planets. An explored planet with a colony, mine or fortification is drawn as SC1's marker
-  // in place of the circle; everything else stays a circle coloured by type.
+  // Planets. Explored planets show a painted image of their type and the rest stay plain circles.
+  // A colony, mine or fortification on an explored planet adds SC1's marker over the top.
   for (const p of state.planets) {
     const s = toScreen(p.x, p.y, view);
     const selected = p.id === options.selectedPlanetId;
     const fortified = p.fortified || p.improvement === 'fortification';
+    const marked = p.explored && (fortified || p.improvement !== undefined);
 
-    if (p.explored && (fortified || p.improvement)) {
-      const colors = MARKER_COLORS[p.owner];
-      // Black out the marker's cell so links don't show through its gaps, as on SC1's black map.
-      const half = (5 * MARKER_SCALE) / 2;
-      ctx.fillStyle = MAP_BACKGROUND;
-      ctx.fillRect(Math.round(s.x - half), Math.round(s.y - half), 5 * MARKER_SCALE, 5 * MARKER_SCALE);
-      if (fortified) drawMarkerGlyph(ctx, MARKER_GLYPHS.fortified, s.x, s.y, colors.fortified);
-      if (p.improvement === 'colony') drawMarkerGlyph(ctx, MARKER_GLYPHS.colony, s.x, s.y, colors.improvement);
-      if (p.improvement === 'mine') drawMarkerGlyph(ctx, MARKER_GLYPHS.mine, s.x, s.y, colors.improvement);
-      if (selected) {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(Math.round(s.x - half) - 3, Math.round(s.y - half) - 3, 5 * MARKER_SCALE + 6, 5 * MARKER_SCALE + 6);
-      }
-      continue;
-    }
-
-    // Explored planets show a painted image of their type; the rest stay plain circles.
-    if (!(p.explored && drawPlanetSprite(ctx, p.type, p.id, s.x, s.y, PLANET_SPRITE_RADIUS))) {
+    if (!(p.explored && drawPlanetSprite(ctx, p.type, p.id, s.x, s.y, PLANET_RADIUS))) {
       ctx.beginPath();
       ctx.arc(s.x, s.y, PLANET_RADIUS, 0, Math.PI * 2);
       ctx.fillStyle = p.explored ? TYPE_COLORS[p.type] : UNEXPLORED_COLOR;
       ctx.fill();
     }
+    if (marked) {
+      const colors = MARKER_COLORS[p.owner];
+      if (fortified) drawMarker(ctx, 'fortified', s.x, s.y, colors.fortified);
+      if (p.improvement === 'colony') drawMarker(ctx, 'colony', s.x, s.y, colors.improvement);
+      if (p.improvement === 'mine') drawMarker(ctx, 'mine', s.x, s.y, colors.improvement);
+    }
     if (selected) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, (p.explored ? PLANET_SPRITE_RADIUS : PLANET_RADIUS) + 3, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, marked ? MARKER_HALF + 6 : PLANET_RADIUS + 4, 0, Math.PI * 2);
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
