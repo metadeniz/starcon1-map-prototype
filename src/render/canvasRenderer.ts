@@ -25,11 +25,12 @@ const UNEXPLORED_COLOR = '#2f6fb8';
 // with the diamond or plus drawn over it, the same way SC1 layers them.
 type MarkerShape = 'colony' | 'mine' | 'fortified';
 const MARKER_LINE_WIDTH = 3;
-// SC1's own marker colours (palette entries the exe picks at linear 0x412E): yellow for the
-// Alliance and blue for the Hierarchy, with the fortification square a lighter shade.
+// SC1's side colours, taken from the EGA palette of its report-screen starbases: blues for the
+// Alliance and red, orange and brown for the Hierarchy. The fortification square is a darker
+// shade, drawn first so a colony's diamond or a mine's cross covers it where they cross.
 const MARKER_COLORS: Record<Owner, { improvement: string; fortified: string }> = {
-  alliance: { improvement: '#ffff7f', fortified: '#ffffbb' },
-  hierarchy: { improvement: '#2fa7f3', fortified: '#5fbfff' },
+  alliance: { improvement: '#5757ff', fortified: '#3434b8' },
+  hierarchy: { improvement: '#ff5757', fortified: '#b83434' },
   neutral: { improvement: '#eef0f5', fortified: '#eef0f5' },
 };
 
@@ -56,10 +57,10 @@ function drawMarker(ctx: CanvasRenderingContext2D, shape: MarkerShape, cx: numbe
   ctx.stroke();
 }
 
-// SC1's side colours: yellow for the Alliance and blue for the Hierarchy.
+// SC1's side colours (see MARKER_COLORS).
 const OWNER_COLORS: Record<Owner, string> = {
-  alliance: '#ffff7f',
-  hierarchy: '#2fa7f3',
+  alliance: '#5757ff',
+  hierarchy: '#ff5757',
   neutral: '#9aa4b8',
 };
 
