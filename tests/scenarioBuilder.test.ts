@@ -49,11 +49,11 @@ describe('custom scenarios', () => {
     sc.sides.hierarchy.worlds = { dead: 0, mineral: 0, life: 0, colony: 0, fortifiedColony: 0, mine: 0, fortifiedMine: 0 };
     sc.sides.hierarchy.starbase = false;
     sc.sides.hierarchy.ships = [];
-    sc.movesPerTurn = 0;
+    sc.actionsPerTurn = 0;
     expect(scenarioProblems(sc)).toEqual([
       'The Hierarchy needs at least 1 world.',
       'The Hierarchy needs a starbase or at least 1 ship.',
-      'Moves per turn must be 1 to 9.',
+      'Actions per turn must be 1 to 9.',
     ]);
     sc.sides.hierarchy.worlds.dead = 11;
     expect(scenarioProblems(sc)[0]).toBe('The map has 51 worlds; the most is 50.');

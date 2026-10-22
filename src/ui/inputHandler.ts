@@ -1,6 +1,6 @@
 import type { GameState } from '../model/types';
 import { planetAt, shipAt, type ViewTransform } from '../render/canvasRenderer';
-import { moveShip, moveStarbase, reachablePlanets, starbaseDestinations, type ReachablePlanet } from '../game/gameState';
+import { moveShip, moveStarbase, reachablePlanets, STARBASE_MOVE_ACTIONS, starbaseDestinations, type ReachablePlanet } from '../game/gameState';
 
 export interface Selection {
   selectedPlanetId?: string;
@@ -13,14 +13,14 @@ export interface Selection {
 function recomputeReachable(state: GameState, selection: Selection): void {
   if (selection.movingStarbaseFromPlanetId) {
     const planet = state.planets.find((p) => p.id === selection.movingStarbaseFromPlanetId);
-    if (!planet || !planet.hasStarbase || planet.starbaseMovesRemaining <= 0) {
+    if (!planet || !planet.hasStarbase || state.actionsRemaining < STARBASE_MOVE_ACTIONS) {
       selection.movingStarbaseFromPlanetId = undefined;
       selection.reachable = undefined;
       return;
     }
     const reachable = new Map<string, ReachablePlanet>();
     for (const id of starbaseDestinations(planet, state)) {
-      reachable.set(id, { planetId: id, cost: 1, path: [planet.id, id] });
+      reachable.set(id, { planetId: id, cost: STARBASE_MOVE_ACTIONS, path: [planet.id, id] });
     }
     selection.reachable = reachable;
     return;

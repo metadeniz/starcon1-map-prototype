@@ -16,8 +16,6 @@ export interface Planet {
   type: PlanetType;
   owner: Owner;
   hasStarbase: boolean;
-  /** Moves left this turn for the starbase here (0 when there's no starbase). Refills to 1 each turn. */
-  starbaseMovesRemaining: number;
   improvement?: ImprovementType;
   /** A fortified colony or mine, as SC1 scenarios can start with. */
   fortified?: boolean;
@@ -41,7 +39,6 @@ export interface Ship {
   /** Crew currently aboard; starts equal to `crew`, reduced by future combat damage. */
   currentCrew: number;
   planetId: string;
-  movesRemaining: number;
 }
 
 /** One side's worlds, in SC1's scenario order. The side's half of the map has exactly these. */
@@ -92,7 +89,11 @@ export interface ScenarioConfig {
   sides: Record<Faction, SideSetup>;
   /** Who moves first. Unset means the human does. */
   firstMove?: Faction;
-  movesPerTurn: number;
+  /**
+   * Actions each side gets per turn, as in SC1 (3). Each jump a ship makes, each construction
+   * started and each ship built is one action; moving a starbase is three.
+   */
+  actionsPerTurn: number;
   mineIncomePerTurn: number;
   /** SC1's "random events off" flag. The prototype has no random events, but SC1 files keep it. */
   randomEventsOff?: boolean;
@@ -109,4 +110,6 @@ export interface GameState {
   humanFaction: Faction;
   /** Whose turn it currently is. Sides alternate; a new round starts when this cycles back to `humanFaction`. */
   currentFaction: Faction;
+  /** Actions the current side has left this turn. Refills to `scenario.actionsPerTurn` when the turn passes. */
+  actionsRemaining: number;
 }

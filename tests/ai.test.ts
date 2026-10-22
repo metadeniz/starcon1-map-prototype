@@ -22,10 +22,16 @@ describe('runAiTurn', () => {
     const hierarchyBuiltOrClaimed = state.planets.some((p) => p.owner === 'hierarchy' && p.improvement);
     expect(movedAtLeastOne || hierarchyBuiltOrClaimed).toBe(true);
 
-    // Never left a ship with more moves than the scenario allows, or negative moves.
-    for (const ship of state.ships) {
-      expect(ship.movesRemaining).toBeGreaterThanOrEqual(0);
-      expect(ship.movesRemaining).toBeLessThanOrEqual(state.scenario.movesPerTurn);
+  });
+
+  it('never spends more actions than the side has', () => {
+    const state = generateGalaxy(DEFAULT_SCENARIO, 'alliance', 42);
+    for (let i = 0; i < 10; i++) {
+      endTurn(state);
+      runAiTurn(state, 'hierarchy');
+      expect(state.actionsRemaining).toBeGreaterThanOrEqual(0);
+      expect(state.actionsRemaining).toBeLessThanOrEqual(state.scenario.actionsPerTurn);
+      endTurn(state);
     }
   });
 

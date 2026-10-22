@@ -173,7 +173,7 @@ function draw(): void {
     ? `${FACTION_LABEL[won]} wins!`
     : `Turn ${state.turn} — ${FACTION_LABEL[state.humanFaction]} (you)`;
   scenarioBar.textContent = `${state.scenario.title}. ${victoryText(state.scenario.sides[state.humanFaction])}.`;
-  starbucksBar.innerHTML = `<span><span class="side-hierarchy">Hierarchy: ${state.starbucks.hierarchy}</span> | <span class="side-alliance">Alliance: ${state.starbucks.alliance}</span> Starbucks</span>`;
+  starbucksBar.innerHTML = `<span><span class="side-hierarchy">Hierarchy: ${state.starbucks.hierarchy}</span> | <span class="side-alliance">Alliance: ${state.starbucks.alliance}</span> Starbucks</span><br><strong>Actions left: ${state.actionsRemaining} of ${state.scenario.actionsPerTurn}</strong>`;
 }
 
 // The map images load asynchronously; redraw once they arrive.
