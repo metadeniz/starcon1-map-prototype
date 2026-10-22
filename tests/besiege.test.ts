@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { besiege, besiegeOdds, canBesiege, endTurn, InvalidActionError, isPinned, moveShip, reachablePlanets } from '../src/game/gameState';
 import type { GameState, Planet, Ship } from '../src/model/types';
 import { DEFAULT_SCENARIO } from '../src/generation/scenarioConfig';
+import { menuItems, newKeyboardUi } from '../src/ui/keyboardControl';
 
 function makePlanet(overrides: Partial<Planet> & Pick<Planet, 'id'>): Planet {
   return { name: overrides.id, type: 'dead', owner: 'neutral', hasStarbase: false, explored: true, x: 0, y: 0, ...overrides };
@@ -145,5 +146,15 @@ describe('assaulting fortifications at the end of a turn', () => {
     state.ships.push(makeShip({ id: 's2' }), makeShip({ id: 'h1', owner: 'hierarchy', type: 'Umgah Drone' }));
     endTurn(state);
     expect(planet(state, 'F').improvement).toBe('fortification');
+  });
+});
+
+describe('keyboard orders menu', () => {
+  it('offers BESIEGE, and MOVE only greyed out, to a held ship', () => {
+    const state = makeState();
+    const ui = { ...newKeyboardUi(), mode: 'orders' as const, unit: { kind: 'ship' as const, shipId: 's1' } };
+    const items = menuItems(ui, state);
+    expect(items.find((i) => i.key === 'besiege')).toMatchObject({ label: 'BESIEGE', status: 'available' });
+    expect(items.find((i) => i.key === 'move')!.status).toBe('unavailable');
   });
 });

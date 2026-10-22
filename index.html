@@ -96,6 +96,39 @@
         font-size: 12px;
         color: #8892a6;
       }
+      /* The keyboard order menu. SC1's colours: white can be chosen, black can't, red is under way. */
+      #command-menu {
+        border: 1px solid #35507a;
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 13px;
+      }
+      #command-menu .title {
+        color: #8fb8ff;
+        margin-bottom: 4px;
+      }
+      #command-menu .item {
+        padding: 2px 6px;
+        letter-spacing: 0.05em;
+        color: #ffffff;
+      }
+      #command-menu .item.unavailable {
+        color: #3a4150;
+      }
+      #command-menu .item.in-process {
+        color: #ff5757;
+      }
+      #command-menu .item.highlighted {
+        outline: 2px solid #f4d35e;
+      }
+      #command-menu .keys {
+        margin-top: 6px;
+        font-size: 11px;
+        color: #8892a6;
+      }
+      #end-turn-btn.highlighted {
+        outline: 2px solid #f4d35e;
+      }
       .faction-actions {
         margin-top: 10px;
         border-top: 1px solid #232a3a;
@@ -345,6 +378,7 @@
         <div id="event-line"></div>
         <div id="scenario-bar"></div>
         <div id="hint">Click a planet to inspect it. Click a ship's icon (or its Select button) to give it orders, then click a planet along a lit-up route to move it there.</div>
+        <div id="command-menu"></div>
         <div id="info-panel">
           <div id="info-empty">No planet selected.</div>
         </div>
