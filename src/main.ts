@@ -5,7 +5,7 @@ import { renderInfoPanel } from './render/infoPanel';
 import { whenIconsLoaded } from './render/shipIcons';
 import { whenPlanetSpritesLoaded } from './render/planetSprites';
 import { handleCanvasClick, refreshAfterEndTurn, selectShip, startMovingStarbase, type Selection } from './ui/inputHandler';
-import { buildShip, endTurn, InvalidActionError, startConstruction, winner } from './game/gameState';
+import { besiege, buildShip, endTurn, InvalidActionError, startConstruction, winner } from './game/gameState';
 import { SC1_PRESETS } from './generation/sc1Presets';
 import { parseSc1Scenario, sc1ToScenarioConfig, scenarioConfigToSc1, ScenarioFileError, writeSc1Scenario } from './generation/sc1Scenario';
 import { worldTotal } from './generation/galaxyGenerator';
@@ -40,6 +40,7 @@ const scenarioFileInput = document.getElementById('scenario-file') as HTMLInputE
 const scenarioInfo = document.getElementById('scenario-info')!;
 const scenarioError = document.getElementById('scenario-error')!;
 const scenarioBar = document.getElementById('scenario-bar')!;
+const eventLine = document.getElementById('event-line')!;
 const commandMenu = document.getElementById('command-menu')!;
 
 // The first two entries are rebuilt in place: a fresh roll of a typical game, and the custom settings.
@@ -166,6 +167,10 @@ function draw(): void {
     targetPlanetId: keyboard.mode === 'destination' ? keyboard.destinationId : undefined,
   });
   renderCommandMenu(commandMenu, state, keyboard, selection.reachable);
+  if (keyboard.message) {
+    eventLine.textContent = keyboard.message;
+    keyboard.message = undefined;
+  }
   endTurnBtn.classList.toggle('highlighted', keyboard.mode === 'unit' && keyboard.unit?.kind === 'end-turn');
   renderInfoPanel(infoPanel, state, selection.selectedPlanetId, selection.selectedShipId, selection.movingStarbaseFromPlanetId);
   const won = winner(state);
@@ -201,6 +206,7 @@ function startGame(humanFaction: Faction): void {
   if (scenarioProblems(selectedScenario()).length > 0) return;
   // A copy, so editing the custom settings later can't change a game in progress.
   state = generateGalaxy(structuredClone(selectedScenario()), humanFaction);
+  eventLine.textContent = '';
   selection.selectedPlanetId = undefined;
   selection.selectedShipId = undefined;
   selection.movingStarbaseFromPlanetId = undefined;
@@ -230,6 +236,7 @@ infoPanel.addEventListener('click', (event) => {
   const action = target.dataset.action;
   if (!action) return;
 
+  eventLine.textContent = '';
   try {
     if (action === 'select-ship') {
       const shipId = target.dataset.ship;
@@ -249,6 +256,10 @@ infoPanel.addEventListener('click', (event) => {
       const planetId = target.dataset.planet;
       const role = target.dataset.role as ShipRole;
       if (owner && planetId) buildShip(owner, planetId, role, state);
+    } else if (action === 'besiege') {
+      const shipId = target.dataset.ship;
+      if (shipId) eventLine.textContent = besiege(shipId, state) ? 'The siege broke the fortification!' : 'The fortification held.';
+      refreshAfterEndTurn(state, selection); // a broken fortification frees the ship to move
     }
   } catch (err) {
     if (err instanceof InvalidActionError) {
@@ -264,6 +275,7 @@ infoPanel.addEventListener('click', (event) => {
 
 function finishTurn(): void {
   if (!state || winner(state)) return;
+  eventLine.textContent = '';
   endTurn(state);
   playAiTurnsUntilHuman();
   refreshAfterEndTurn(state, selection);

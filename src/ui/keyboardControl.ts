@@ -2,8 +2,10 @@ import type { Faction, GameState, ImprovementType } from '../model/types';
 import { SHIP_ROSTER, type ShipRole } from '../model/shipRoster';
 import { IMPROVEMENT_TYPES, isImprovementAllowed } from '../model/improvements';
 import {
+  besiege,
   buildShip,
   buildableRoles,
+  canBesiege,
   InvalidActionError,
   InvalidMoveError,
   moveShip,
@@ -16,8 +18,8 @@ import type { MenuSound } from './sounds';
 
 // SC1's strategic interface, driven from the keyboard. As in SC1:
 // - A highlighter picks one of your units (ship or starbase). The arrow keys move it.
-// - Enter (fire) opens that unit's orders: MOVE, COLONIZE, MINE, FORTIFY, or BUILD for a
-//   starbase. Options that can't be used now are shown in black and are skipped by the highlight;
+// - Enter (fire) opens that unit's orders: MOVE, COLONIZE, MINE, FORTIFY (BESIEGE at an enemy
+//   fortification), or BUILD for a starbase. Options that can't be used now are shown in black and are skipped by the highlight;
 //   one that is already under way is shown in red.
 // - MOVE lights the routes to every star the ship can reach. Left/right step through them, the
 //   light-blue one is the current choice, and Enter jumps there.
@@ -35,6 +37,8 @@ export interface KeyboardUi {
   menuIndex: number;
   /** The highlighted destination while choosing where to move. */
   destinationId?: string;
+  /** A result to show the player, such as how a siege went. The page clears it once shown. */
+  message?: string;
 }
 
 export type MenuStatus = 'available' | 'unavailable' | 'in-process';
@@ -115,6 +119,9 @@ export function menuItems(ui: KeyboardUi, state: GameState): MenuItem[] {
       return to !== undefined && wouldSucceed(state, (copy) => moveShip(copy.ships.find((s) => s.id === ship.id)!, to, copy));
     });
     const items: MenuItem[] = [{ key: 'move', label: 'MOVE', status: status(canMove) }];
+    if (canBesiege(ship, state)) {
+      items.push({ key: 'besiege', label: 'BESIEGE', status: status(wouldSucceed(state, (copy) => besiege(ship.id, copy, () => 1))) });
+    }
     for (const type of IMPROVEMENT_TYPES) {
       if (!isImprovementAllowed(planet, type)) continue;
       const building = planet.underConstruction;
@@ -348,7 +355,9 @@ function runMenuItem(key: string, state: GameState, selection: Selection, ui: Ke
       openMenu(ui, state, 'build');
       return;
     }
-    if (key.startsWith('construct:') && unit?.kind === 'ship') {
+    if (key === 'besiege' && unit?.kind === 'ship') {
+      ui.message = besiege(unit.shipId, state) ? 'The siege broke the fortification!' : 'The fortification held.';
+    } else if (key.startsWith('construct:') && unit?.kind === 'ship') {
       startConstruction(unit.shipId, key.slice('construct:'.length) as ImprovementType, state);
     } else if (key.startsWith('build:') && unit?.kind === 'starbase') {
       buildShip(state.humanFaction, unit.planetId, key.slice('build:'.length) as ShipRole, state);
