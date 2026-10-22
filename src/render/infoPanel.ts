@@ -63,7 +63,7 @@ function renderStarbaseMoveAction(planet: Planet, actionsRemaining: number, movi
     return `<div class="action-group"><div class="label">Starbase</div><em>Moving it takes ${STARBASE_MOVE_ACTIONS} actions; ${actionsRemaining} left this turn.</em></div>`;
   }
   if (movingStarbaseFromPlanetId === planet.id) {
-    return `<div class="action-group"><div class="label">Starbase</div><em>Choose a highlighted planet to relocate it to.</em></div>`;
+    return `<div class="action-group"><div class="label">Starbase</div><em>Choose a planet along a lit-up route to relocate it to.</em></div>`;
   }
   return `<div class="action-group"><div class="label">Starbase</div><button data-action="move-starbase" data-planet="${planet.id}">Move 1 step (${STARBASE_MOVE_ACTIONS} actions)</button></div>`;
 }
