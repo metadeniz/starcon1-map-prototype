@@ -1,5 +1,5 @@
 import type { Connection, Faction, GameState, ImprovementType, Planet, Ship } from '../model/types';
-import { getShipDefinition, SHIP_ROSTER, type ShipRole } from '../model/shipRoster';
+import { definitionOfShip, getShipDefinition, SHIP_ROSTER, type ShipRole } from '../model/shipRoster';
 import { nextId } from '../model/id';
 import { buildDurationTurns, isImprovementAllowed } from '../model/improvements';
 
@@ -31,13 +31,34 @@ export function moveCost(planetId: string, owner: Faction, state: GameState): nu
   return planet?.improvement === 'colony' && planet.owner === owner ? 0 : 1;
 }
 
+/** A fortification, or a fortified colony or mine. */
+export function isFortified(planet: Planet): boolean {
+  return planet.improvement === 'fortification' || planet.fortified === true;
+}
+
+/** The ship's planet, if the enemy has fortified it. */
+function enemyFortificationAt(ship: Ship, state: GameState): Planet | undefined {
+  const planet = state.planets.find((p) => p.id === ship.planetId);
+  return planet && isFortified(planet) && planet.owner === otherFaction(ship.owner) ? planet : undefined;
+}
+
+/**
+ * As in SC1 (STARCON.EXE 02D7:095E), a ship at an enemy fortification can't leave it; it can
+ * only besiege. Arilou Skiffs slip past.
+ */
+export function isPinned(ship: Ship, state: GameState): boolean {
+  return !!enemyFortificationAt(ship, state) && !definitionOfShip(ship.owner, ship.type)?.passesFortifications;
+}
+
 /**
  * Planets the ship can move to right now: those one connection away, while its side has an
- * action left. Ships move one connection per move; a longer trip takes several moves.
+ * action left and the ship isn't pinned. Ships move one connection per move; a longer trip
+ * takes several moves.
  */
 export function reachablePlanets(ship: Ship, state: GameState): Map<string, ReachablePlanet> {
   const result = new Map<string, ReachablePlanet>();
   if (ship.owner !== state.currentFaction || state.actionsRemaining <= 0) return result;
+  if (isPinned(ship, state)) return result;
   const adjacency = buildAdjacency(state.planets, state.connections);
   const cost = moveCost(ship.planetId, ship.owner, state);
   for (const neighbor of adjacency.get(ship.planetId) ?? []) {
@@ -82,6 +103,9 @@ export function moveShip(ship: Ship, destinationPlanetId: string, state: GameSta
   }
   if (destinationPlanetId === ship.planetId) {
     throw new InvalidMoveError('Ship is already at that planet');
+  }
+  if (isPinned(ship, state)) {
+    throw new InvalidMoveError('An enemy fortification holds this ship; besiege it to break free');
   }
   const reachable = reachablePlanets(ship, state);
   const target = reachable.get(destinationPlanetId);
@@ -195,6 +219,66 @@ export function buildShip(owner: Faction, planetId: string, role: ShipRole, stat
   });
 }
 
+/** Chance out of 128 that one besiege succeeds: SC1 rolls `rand() & 0x7F` (02D7:04A2). */
+export function besiegeOdds(ship: Ship): number {
+  return definitionOfShip(ship.owner, ship.type)?.breaksFortifications ? 42 : 13;
+}
+
+/** Whether `ship` may besiege where it is: an enemy fortification with no enemy ships present. */
+export function canBesiege(ship: Ship, state: GameState): boolean {
+  const planet = enemyFortificationAt(ship, state);
+  return !!planet && !state.ships.some((s) => s.planetId === planet.id && s.owner !== ship.owner);
+}
+
+/**
+ * Removes a planet's fortification, as a successful siege or assault does in SC1. A planet that
+ * was only a fortification passes to `taker`; a colony or mine stays its owner's, unfortified.
+ */
+function breakFortification(planet: Planet, taker: Faction): void {
+  if (planet.improvement === 'fortification') {
+    planet.improvement = undefined;
+    planet.owner = taker;
+  }
+  planet.fortified = undefined;
+}
+
+/**
+ * Orders `shipId` to besiege the enemy fortification it sits at, for one action. Returns whether
+ * the siege broke it. `roll` returns a number in [0, 1).
+ */
+export function besiege(shipId: string, state: GameState, roll: () => number = Math.random): boolean {
+  const ship = state.ships.find((s) => s.id === shipId);
+  if (!ship) throw new InvalidActionError('Unknown ship');
+  if (ship.owner !== state.currentFaction) {
+    throw new InvalidActionError("It's not this side's turn");
+  }
+  if (!canBesiege(ship, state)) {
+    throw new InvalidActionError('Only an enemy fortification with no enemy ships present can be besieged');
+  }
+  spendActions(state, 1);
+
+  if (Math.floor(roll() * 128) >= besiegeOdds(ship)) return false;
+  breakFortification(state.planets.find((p) => p.id === ship.planetId)!, ship.owner);
+  return true;
+}
+
+/**
+ * At the end of `attacker`'s turn, its ships smash any enemy fortification they hold with two
+ * or more ships, or with an Ur-Quan Dreadnought, as long as no defending ships are there
+ * (SC1 02D7:19CC).
+ */
+function assaultFortifications(state: GameState, attacker: Faction): void {
+  for (const planet of state.planets) {
+    if (!isFortified(planet) || planet.owner !== otherFaction(attacker)) continue;
+    const shipsHere = state.ships.filter((s) => s.planetId === planet.id);
+    if (shipsHere.some((s) => s.owner !== attacker)) continue;
+    const attackers = shipsHere.filter((s) => s.owner === attacker);
+    if (attackers.length >= 2 || attackers.some((s) => definitionOfShip(s.owner, s.type)?.breaksFortifications)) {
+      breakFortification(planet, attacker);
+    }
+  }
+}
+
 /** The side that opens each round: the scenario's first mover, or the human. */
 export function firstMover(state: GameState): Faction {
   return state.scenario.firstMove ?? state.humanFaction;
@@ -230,9 +314,11 @@ export function winner(state: GameState): Faction | null {
 /**
  * Ends the current side's turn and hands control to the other side with a fresh set of
  * actions. Sides alternate; a new round (turn counter, construction progress, mine income)
- * only advances once control cycles back to the side that moves first, so a full round still means both sides have acted — matching the original "1-3 turns to build" pacing.
+ * only advances once control cycles back to the side that moves first, so a full round still
+ * means both sides have acted — matching the original "1-3 turns to build" pacing.
  */
 export function endTurn(state: GameState): void {
+  assaultFortifications(state, state.currentFaction);
   state.currentFaction = otherFaction(state.currentFaction);
   state.actionsRemaining = state.scenario.actionsPerTurn;
 

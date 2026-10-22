@@ -1,6 +1,6 @@
 import type { Faction, GameState, Planet, Ship } from '../model/types';
 import { SHIP_ROSTER } from '../model/shipRoster';
-import { buildableRoles, STARBASE_MOVE_ACTIONS } from '../game/gameState';
+import { besiegeOdds, buildableRoles, canBesiege, isPinned, STARBASE_MOVE_ACTIONS } from '../game/gameState';
 import { buildDurationTurns, IMPROVEMENT_LABEL, IMPROVEMENT_TYPES, isImprovementAllowed } from '../model/improvements';
 
 const OWNER_LABEL: Record<Planet['owner'], string> = {
@@ -30,9 +30,21 @@ function renderShipRow(ship: Ship, selectedShipId: string | undefined, humanFact
   `;
 }
 
-function renderShipOrders(ship: Ship, planet: Planet, actionsRemaining: number): string {
+function renderSiegeOrders(ship: Ship, state: GameState): string {
+  const disabled = state.actionsRemaining < 1 ? 'disabled' : '';
+  const pinned = isPinned(ship, state) ? '<em>Held by an enemy fortification. Besiege it to break free.</em>' : '';
+  const button = canBesiege(ship, state)
+    ? `<button data-action="besiege" data-ship="${ship.id}" ${disabled}>Besiege (${Math.round((besiegeOdds(ship) / 128) * 100)}% chance)</button>`
+    : '';
+  if (!pinned && !button) return '';
+  return `<div class="action-group"><div class="label">Orders for ${ship.type}</div>${pinned} ${button}</div>`;
+}
+
+function renderShipOrders(ship: Ship, planet: Planet, state: GameState): string {
+  const siege = renderSiegeOrders(ship, state);
+  if (siege) return siege;
   if (planet.hasStarbase || planet.improvement || planet.underConstruction) return '';
-  const disabled = actionsRemaining < 1 ? 'disabled' : '';
+  const disabled = state.actionsRemaining < 1 ? 'disabled' : '';
   const turns = buildDurationTurns(ship.crew);
   const buttons = IMPROVEMENT_TYPES.filter((type) => isImprovementAllowed(planet, type))
     .map(
@@ -85,7 +97,7 @@ export function renderInfoPanel(
   const shipRows = shipsHere.map((s) => renderShipRow(s, selectedShipId, state.humanFaction)).join('');
 
   const selectedShip = shipsHere.find((s) => s.id === selectedShipId && s.owner === state.humanFaction);
-  const ordersHtml = selectedShip && planet.explored ? renderShipOrders(selectedShip, planet, state.actionsRemaining) : '';
+  const ordersHtml = selectedShip && planet.explored ? renderShipOrders(selectedShip, planet, state) : '';
 
   const typeLabel = planet.explored ? TYPE_LABEL[planet.type] : 'Unknown';
   const ownerLabel = planet.explored ? OWNER_LABEL[planet.owner] : 'Unknown';

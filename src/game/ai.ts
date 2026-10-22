@@ -1,5 +1,5 @@
 import type { Faction, GameState, ImprovementType } from '../model/types';
-import { buildableRoles, buildShip, moveShip, reachablePlanets, startConstruction } from './gameState';
+import { besiege, buildableRoles, buildShip, canBesiege, moveShip, reachablePlanets, startConstruction } from './gameState';
 import { isImprovementAllowed } from '../model/improvements';
 import { SHIP_ROSTER } from '../model/shipRoster';
 
@@ -10,10 +10,10 @@ function preferredImprovement(planetType: 'life' | 'mineral' | 'dead'): Improvem
 }
 
 /**
- * A simple heuristic AI turn, spending the side's actions in priority order: ships already
- * sitting on eligible unclaimed ground start building there, then an owned starbase buys the
- * best ship it can afford, then the remaining actions move ships toward the nearest planet not
- * already theirs. Not strategically deep — just enough to keep the opposing side playing a full game.
+ * A simple heuristic AI turn, spending the side's actions in priority order: ships at an enemy
+ * fortification besiege it, ships sitting on eligible unclaimed ground start building there,
+ * then an owned starbase buys the best ship it can afford, then the remaining actions move ships
+ * toward the nearest planet not already theirs. Not strategically deep — just enough to keep the opposing side playing a full game.
  */
 export function runAiTurn(state: GameState, faction: Faction): void {
   const ships = () => state.ships.filter((s) => s.owner === faction);
@@ -23,6 +23,13 @@ export function runAiTurn(state: GameState, faction: Faction): void {
     if (state.actionsRemaining <= 0) return;
     const planet = state.planets.find((p) => p.id === ship.planetId);
     if (!planet) continue;
+
+    // Sitting at an enemy fortification? Lay siege to it.
+    if (canBesiege(ship, state)) {
+      besiege(ship.id, state);
+      busy.add(ship.id);
+      continue;
+    }
 
     // Already building here itself? Stay and let it finish.
     if (planet.underConstruction?.shipId === ship.id) {

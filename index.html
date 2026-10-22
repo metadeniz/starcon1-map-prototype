@@ -302,6 +302,13 @@
         min-height: 1em;
         margin-top: 6px;
       }
+      #event-line {
+        font-size: 12px;
+        color: #ffd36b;
+      }
+      #event-line:empty {
+        display: none;
+      }
       #scenario-bar {
         font-size: 12px;
         color: #a9b2c4;
@@ -335,6 +342,7 @@
           </div>
         </div>
         <div id="starbucks-bar" class="row"></div>
+        <div id="event-line"></div>
         <div id="scenario-bar"></div>
         <div id="hint">Click a planet to inspect it. Click a ship's icon (or its Select button) to give it orders, then click a planet along a lit-up route to move it there.</div>
         <div id="info-panel">

@@ -7,6 +7,13 @@ export interface ShipDefinition {
   name: string;
   cost: number;
   crew: number;
+  /** Ignores enemy fortifications (SC1 ship flag 0x1000, the Arilou's alone). */
+  passesFortifications?: boolean;
+  /**
+   * Besieges at about 33% instead of 10%, and smashes an enemy fortification on its own
+   * (SC1 ship flag 0x2000, the Ur-Quan's alone).
+   */
+  breaksFortifications?: boolean;
 }
 
 export const SHIP_ROSTER: Record<Faction, ShipDefinition[]> = {
@@ -14,7 +21,7 @@ export const SHIP_ROSTER: Record<Faction, ShipDefinition[]> = {
     { role: 'shofixti-scout', name: 'Shofixti Scout', cost: 5, crew: 6 },
     { role: 'earthling-cruiser', name: 'Earthling Cruiser', cost: 9, crew: 18 },
     { role: 'syreen-penetrator', name: 'Syreen Penetrator', cost: 12, crew: 12 },
-    { role: 'arilou-skiff', name: 'Arilou Skiff', cost: 16, crew: 6 },
+    { role: 'arilou-skiff', name: 'Arilou Skiff', cost: 16, crew: 6, passesFortifications: true },
     { role: 'mmrnmhrm-x-form', name: 'Mmrnmhrm X-Form', cost: 19, crew: 20 },
     { role: 'yehat-terminator', name: 'Yehat Terminator', cost: 23, crew: 20 },
     { role: 'chenjesu-broodhome', name: 'Chenjesu Broodhome', cost: 26, crew: 36 },
@@ -26,7 +33,7 @@ export const SHIP_ROSTER: Record<Faction, ShipDefinition[]> = {
     { role: 'androsynth-guardian', name: 'Androsynth Guardian', cost: 15, crew: 20 },
     { role: 'spathi-eluder', name: 'Spathi Eluder', cost: 18, crew: 30 },
     { role: 'mycon-podship', name: 'Mycon Podship', cost: 23, crew: 20 },
-    { role: 'ur-quan-dreadnought', name: 'Ur-Quan Dreadnought', cost: 30, crew: 42 },
+    { role: 'ur-quan-dreadnought', name: 'Ur-Quan Dreadnought', cost: 30, crew: 42, breaksFortifications: true },
   ],
 };
 
@@ -38,4 +45,9 @@ export function getShipDefinition(owner: Faction, role: string): ShipDefinition 
 
 export function shipTypeName(owner: Faction, role: string): string {
   return getShipDefinition(owner, role).name;
+}
+
+/** The roster entry a ship was built from, by its class name. */
+export function definitionOfShip(owner: Faction, typeName: string): ShipDefinition | undefined {
+  return SHIP_ROSTER[owner].find((d) => d.name === typeName);
 }
