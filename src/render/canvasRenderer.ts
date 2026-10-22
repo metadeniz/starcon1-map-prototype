@@ -160,6 +160,26 @@ export function planetAt(screenX: number, screenY: number, state: GameState, vie
   return closest;
 }
 
+const connectionKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** The connections leading one step out from the selected ship's or starbase's planet. */
+export function litConnectionKeys(
+  connections: { a: string; b: string }[],
+  reachable: Map<string, ReachablePlanet> | undefined,
+): Set<string> {
+  const lit = new Set<string>();
+  if (!reachable) return lit;
+  const steps = new Set<string>();
+  for (const r of reachable.values()) {
+    if (r.path.length >= 2) steps.add(connectionKey(r.path[0], r.path[1]));
+  }
+  for (const c of connections) {
+    const key = connectionKey(c.a, c.b);
+    if (steps.has(key)) lit.add(key);
+  }
+  return lit;
+}
+
 export interface RenderOptions {
   selectedPlanetId?: string;
   selectedShipId?: string;
@@ -196,32 +216,30 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, view: Vi
 
   const planetsById = new Map(state.planets.map((p) => [p.id, p]));
 
-  // Connections
-  ctx.strokeStyle = '#2a3350';
-  ctx.lineWidth = 1.5;
-  for (const c of state.connections) {
-    const a = planetsById.get(c.a);
-    const b = planetsById.get(c.b);
-    if (!a || !b) continue;
-    const sa = toScreen(a.x, a.y, view);
-    const sb = toScreen(b.x, b.y, view);
-    ctx.beginPath();
-    ctx.moveTo(sa.x, sa.y);
-    ctx.lineTo(sb.x, sb.y);
-    ctx.stroke();
-  }
-
-  // Reachable-planet highlights (drawn under planets)
-  if (options.reachable) {
-    for (const planetId of options.reachable.keys()) {
-      const p = planetsById.get(planetId);
-      if (!p) continue;
-      const s = toScreen(p.x, p.y, view);
+  // Connections. A route the selected ship or starbase can move along is lit up in white.
+  const lit = litConnectionKeys(state.connections, options.reachable);
+  for (const lighting of [false, true]) {
+    for (const c of state.connections) {
+      if (lit.has(connectionKey(c.a, c.b)) !== lighting) continue;
+      const a = planetsById.get(c.a);
+      const b = planetsById.get(c.b);
+      if (!a || !b) continue;
+      const sa = toScreen(a.x, a.y, view);
+      const sb = toScreen(b.x, b.y, view);
       ctx.beginPath();
-      ctx.arc(s.x, s.y, PLANET_RADIUS + 6, 0, Math.PI * 2);
-      ctx.strokeStyle = '#f4d35e';
-      ctx.lineWidth = 2;
+      ctx.moveTo(sa.x, sa.y);
+      ctx.lineTo(sb.x, sb.y);
+      if (lighting) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        ctx.shadowBlur = 8;
+      } else {
+        ctx.strokeStyle = '#2a3350';
+        ctx.lineWidth = 1.5;
+      }
       ctx.stroke();
+      ctx.shadowBlur = 0;
     }
   }
 
